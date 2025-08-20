@@ -1,0 +1,140 @@
+import React from "react";
+import { Link, useNavigate } from "react-router-dom";
+import LogoMark from "./LogoMark";
+
+export type Agent = {
+	id: string;
+	name: string;
+	role?: string;
+	thumbnail: string; // image url
+};
+
+export type SidebarNavProps = {
+	agents?: Agent[];
+	activeAgentId?: string;
+	className?: string;
+	renderAgent?: (agent: Agent, active: boolean, onClick: () => void) => React.ReactNode;
+	bottomSlot?: React.ReactNode;
+};
+
+const ACCENT = "#E7E31B";
+
+export const SidebarAgentCard: React.FC<{
+	agent: Agent;
+	active?: boolean;
+	onClick?: (a: Agent) => void;
+}> = ({ agent, active, onClick }) => {
+	return (
+		<button
+			onClick={() => onClick?.(agent)}
+			className="w-full text-left focus:outline-none group"
+			aria-label={`Open ${agent.name}`}
+		>
+			{/* Square container with rounded corners and accent border when active */}
+			<div
+				className={`relative aspect-square rounded-2xl overflow-hidden transition-shadow border-2 mx-0 ${active ? "border-[var(--accent)]" : "border-transparent"
+					}`}
+				style={{
+					// expose CSS var for accent border
+					// @ts-ignore
+					"--accent": ACCENT,
+					boxShadow: active ? `0 0 0 1px ${ACCENT}` : undefined,
+				}}
+			>
+				{/* Full‑bleed image */}
+				<img
+					src={agent.thumbnail}
+					alt={agent.name}
+					className="absolute inset-0 h-full w-full object-cover"
+					onError={(e) => {
+						// If thumb fails, show a subtle fallback
+						const el = e.currentTarget as HTMLImageElement;
+						el.style.display = "none";
+					}}
+				/>
+
+
+				{/* Bottom gradient for text readability */}
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+
+
+				{/* Name/role overlay */}
+				<div className="absolute inset-x-0 bottom-0 p-3">
+					<div className="text-white text-sm font-extrabold leading-tight truncate">{agent.name}</div>
+					<div className="text-[10px] text-gray-300 uppercase tracking-wide truncate">{agent.role || " "}</div>
+				</div>
+			</div>
+		</button>
+	);
+};
+
+const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
+	agents = [],
+	activeAgentId,
+	className = "",
+	renderAgent,
+	bottomSlot,
+	children,
+}) => {
+
+	const navigate = useNavigate()
+	
+	const onAgentClick = (agent: Agent) => {
+		navigate(`/agents/${agent.id}`);
+	};
+
+	return (
+		<nav className={`h-full flex flex-col ${className}`} aria-label="Sidebar">
+			{/* Hide scrollbars utility (scoped) */}
+			<style>{`
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
+
+			{/* HEADER — vertically centered block (logo + Create) */}
+			<header className="flex-none h-40 md:h-48 px-2">
+				<div className="w-full h-full flex flex-col items-center justify-center gap-4">
+					<LogoMark src={"src/assets/logo.png"} size={96} />
+					<Link to="/create" className="flex items-center gap-3 text-white font-extrabold select-none" aria-label="Create Agent">
+						<span className="grid place-items-center w-10 h-10 rounded-full bg-white text-black text-2xl leading-none">+</span>
+						<span className="uppercase leading-[0.95] text-[20px] text-left">
+							CREATE<br />
+							AGENT
+						</span>
+					</Link>
+				</div>
+			</header>
+
+			{/* Scrollable list of agents — minimal side padding so cards are larger */}
+			<div className="flex-1 overflow-y-auto no-scrollbar px-1 space-y-2">
+				{children}
+				{agents.map((a) => {
+					const active = a.id === activeAgentId;
+					const click = () => onAgentClick(a);
+					return (
+						<div key={a.id}>
+							{renderAgent ? (
+								renderAgent(a, active, click)
+							) : (
+								<SidebarAgentCard agent={a} active={active} onClick={onAgentClick} />
+							)}
+						</div>
+					);
+				})}
+			</div>
+
+			{/* FOOTER — vertically centered, reduced vertical space */}
+			<footer className="flex-none px-0 p-0 m-0 mt-auto">
+				<button className="w-full h-14 md:h-16 flex items-center justify-center text-center p-0 m-0">
+					{bottomSlot}
+					<Link to="/account" className="block text-white font-extrabold uppercase tracking-wide">
+						Account
+					</Link>
+				</button>
+			</footer>
+		</nav>
+	);
+};
+
+export default SidebarNav;
