@@ -306,11 +306,6 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 							</div>
 						</div>
 					)}
-
-					{/* Brand mark over image (top-left) */}
-					<div className="absolute top-8 left-8">
-						<LogoMark type="logo-text" src={LOGO_SRC} />
-					</div>
 				</div>
 
 				{/* Right form panel */}
@@ -328,7 +323,7 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 								style={{ backgroundColor: ACCENT }}
 							>
 								{/* If you have a logo svg, you can replace this letter */}
-								<LogoMark type="logo-text" src={LOGO_SRC} />
+								<LogoMark type="logo" src={LOGO_SRC} />
 							</div>
 						</div>
 
