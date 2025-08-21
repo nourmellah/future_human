@@ -1,191 +1,373 @@
+import React, { useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2, Send, Volume2, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
-import LoadingOverlay from "../LoadingOverlay";
 import { createPortal } from "react-dom";
+import LoadingOverlay from "../LoadingOverlay";
 
 const ACCENT = "#E7E31B";
 const DURATION = 200; // ms
 
+/* =============================================================
+ * Types
+ * ============================================================= */
 export type CenterStageProps = {
-	/** Background image/video/canvas placeholder. You can replace the <img> with a canvas later. */
-	bg?: string;
-	/** Optionally disable the chat bar */
-	showChat?: boolean;
-	onFullscreenChange?: (isFullscreen: boolean) => void; // optional callback
-	creating?: boolean;                  // show the blur overlay
-	creatingText?: string;               // optional custom text
+  /** Background image/video/canvas placeholder. You can replace the <img> with a canvas later. */
+  bg?: string;
+  /** Optionally disable the chat bar */
+  showChat?: boolean;
+  onFullscreenChange?: (isFullscreen: boolean) => void; // optional callback
+  creating?: boolean;                  // show the blur overlay
+  creatingText?: string;               // optional custom text
+  /** Optional controlled messages to display (for simulations) */
+  messages?: ChatMessage[];
+  /** Optional external handler to send a new message */
+  onSendMessage?: (text: string) => void;
 };
 
-/**
- * CenterStage — fills ALL available height/width of the center pane.
- * Rounded container with the agent in the background and overlay controls.
- */
+/** Message status for bubble border color. */
+export type MessageStatus = "normal" | "pending" | "error";
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status?: MessageStatus;
+  error?: string; // optional per-message error, shown bottom-right
+};
+
+/* =============================================================
+ * Reusable UI: MessageBubble
+ * ============================================================= */
+export function MessageBubble({
+  msg,
+  className = "",
+}: {
+  msg: ChatMessage;
+  className?: string;
+}) {
+  const border =
+    msg.status === "pending"
+      ? "border-yellow-400"
+      : msg.status === "error"
+      ? "border-red-500"
+      : "border-[#e5e7eb]"; // neutral like gray-200
+
+  const align = msg.role === "user" ? "ml-auto" : "mr-auto";
+
+  return (
+    <div className={`relative max-w-[85%] ${align} ${className}`}>
+      <div
+        className={`bg-white text-black border ${border} rounded-2xl px-3 py-2 text-sm shadow-sm`}
+      >
+        {msg.text}
+      </div>
+      {msg.error && (
+        <div className="absolute right-1 -bottom-4 text-[11px] text-red-500">
+          {msg.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =============================================================
+ * Reusable UI: ConversationPane
+ * - Stack of bubbles anchored bottom-right like the mock
+ * ============================================================= */
+export function ConversationPane({
+  messages,
+  className = "",
+}: {
+  messages: ChatMessage[];
+  className?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Subtle top fade using CSS mask so bubbles fade near the top
+  const maskStyle: React.CSSProperties = {
+    WebkitMaskImage:
+      "linear-gradient(to bottom, transparent 0, black 24px, black calc(100% - 0px))",
+    maskImage:
+      "linear-gradient(to bottom, transparent 0, black 24px, black calc(100% - 0px))",
+  };
+
+  return (
+    <div
+      className={`relative w-[380px] max-w-[85vw] max-h-[50%] overflow-hidden ${className}`}
+      aria-label="Conversation"
+    >
+      <div
+        ref={containerRef}
+        className="absolute inset-0 overflow-y-auto p-3 pr-4 space-y-3"
+        style={maskStyle}
+      >
+        {messages.map((m) => (
+          <MessageBubble key={m.id} msg={m} />
+        ))}
+        <div className="h-6" />
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+ * Reusable UI: ComposeBar
+ * - Bottom centered bar with input, Send (yellow), Mic
+ * ============================================================= */
+export function ComposeBar({
+  value,
+  onChange,
+  onSend,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`absolute bottom-4 right-4 w-[420px] max-w-[85vw] ${className}`}
+      aria-label="Compose message"
+    >
+      <div className="flex items-center gap-2 rounded-2xl border border-[#222] bg-[#0b0b0b]/95 px-3 py-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) onSend();
+          }}
+          placeholder="Type a message…"
+          className="flex-1 h-10 bg-transparent outline-none text-white placeholder:text-gray-400"
+        />
+
+        <button
+          type="button"
+          onClick={onSend}
+          className="grid place-items-center w-9 h-9 rounded-full"
+          style={{ backgroundColor: "#E7E31B", color: "#000" }}
+          title="Send"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+
+        <button
+          type="button"
+          className="grid place-items-center w-9 h-9 rounded-full bg-black/30 border border-[#222]"
+          title="Voice"
+        >
+          <Volume2 className="w-4 h-4 text-white" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* =============================================================
+ * Stage content (image background + overlays)
+ * ============================================================= */
+function StageContent({
+  bg,
+  messages,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
+  showChat,
+}: {
+  bg?: string;
+  messages: ChatMessage[];
+  composerValue: string;
+  onComposerChange: (v: string) => void;
+  onComposerSend: () => void;
+  showChat?: boolean;
+}) {
+  return (
+    <div className="relative h-full w-full rounded-2xl overflow-hidden bg-black">
+      {/* Background – swap with canvas/video later */}
+      {bg ? (
+        <img
+          src={bg}
+          alt="center-stage"
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0b0b0b] to-[#111]" />
+      )}
+
+      {/* Conversation pane (bottom-right like the mock) */}
+      <div className="absolute bottom-28 right-4">
+        <ConversationPane messages={messages} />
+      </div>
+
+      {/* Chat compose bar (bottom, centered) */}
+      {showChat && (
+        <ComposeBar
+          value={composerValue}
+          onChange={onComposerChange}
+          onSend={onComposerSend}
+        />
+      )}
+    </div>
+  );
+}
+
+/* =============================================================
+ * Fullscreen portal shell
+ * ============================================================= */
+function FullscreenPortal({
+  children,
+  active,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+}) {
+  if (!active) return null;
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[9999] bg-black transition-opacity duration-${DURATION} ${
+        active ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div className="absolute inset-0 p-3 sm:p-6">
+        <div
+          className={`h-full w-full transition-transform duration-200 ${
+            active ? "scale-100" : "scale-95"
+          }`}
+        >
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* =============================================================
+ * Main component
+ * ============================================================= */
 export default function CenterStage({
-	bg = "/assets/agent-stage.jpg",
-	showChat = true,
-	onFullscreenChange,
-	creating = false,
-	creatingText = "Creating in progress",
+  bg,
+  showChat = true,
+  onFullscreenChange,
+  creating,
+  creatingText,
+  messages: controlledMessages,
+  onSendMessage,
 }: CenterStageProps) {
-	const [sending, setSending] = useState(false);
-	const [message, setMessage] = useState("");
+  // --- local demo chat state (used if no controlled messages provided) ---
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([
+    { id: "m1", role: "assistant", text: "Hello! I’m your assistant." },
+    { id: "m2", role: "user", text: "Can you help me set the scene?" },
+  ]);
+  const [draft, setDraft] = useState("");
 
-	// fullscreen states: mounted (portal exists) + active (visible; animates opacity/scale)
-	const [fsMounted, setFsMounted] = useState(false);
-	const [fsActive, setFsActive] = useState(false);
+  const messages = controlledMessages ?? localMessages;
 
-	const [dots, setDots] = useState("");
-	useEffect(() => {
-		if (!creating) {
-			setDots("");
-			return;
-		}
-		const id = setInterval(() => {
-			setDots((d) => (d.length >= 3 ? "" : d + "."));
-		}, 400);
-		return () => clearInterval(id);
-	}, [creating]);
+  // --- fullscreen toggle ---
+  const [fsActive, setFsActive] = useState(false);
+  useEffect(() => onFullscreenChange?.(fsActive), [fsActive, onFullscreenChange]);
 
+  function handleSend() {
+    if (!draft.trim()) return;
 
-	// Toggle fullscreen with small animation (0.2s)
-	function enterFs() {
-		setFsMounted(true);
-		// next frame to allow transition
-		requestAnimationFrame(() => {
-			setFsActive(true);
-			onFullscreenChange?.(true);
-		});
-	}
-	function exitFs() {
-		setFsActive(false);
-		setTimeout(() => {
-			setFsMounted(false);
-			onFullscreenChange?.(false);
-		}, DURATION);
-	}
-	const isFullscreen = fsMounted && fsActive;
+    if (onSendMessage) {
+      // controlled mode: delegate send
+      onSendMessage(draft.trim());
+      setDraft("");
+      return;
+    }
 
-	// lock page scroll & Esc to exit
-	useEffect(() => {
-		const root = document.documentElement;
-		if (fsMounted) root.classList.add("overflow-hidden");
-		else root.classList.remove("overflow-hidden");
+    // uncontrolled demo mode
+    const id = Math.random().toString(36).slice(2, 9);
+    setLocalMessages((prev) => [
+      ...prev,
+      { id, role: "user", text: draft.trim(), status: "pending" as const },
+    ]);
+    setDraft("");
 
-		function onKey(e: KeyboardEvent) {
-			if (e.key === "Escape" && fsMounted) exitFs();
-		}
-		if (fsMounted) window.addEventListener("keydown", onKey);
-		return () => {
-			root.classList.remove("overflow-hidden");
-			window.removeEventListener("keydown", onKey);
-		};
-	}, [fsMounted]);
+    // Simulate success/error completion
+    setTimeout(() => {
+      setLocalMessages((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? Math.random() < 0.85
+              ? { ...m, status: "normal" as const }
+              : { ...m, status: "error" as const, error: "Network error" }
+            : m
+        )
+      );
+    }, 700);
+  }
 
+  // --- stage shell ---
+  const stage = (
+    <div className="relative h-full w-full">
+      <StageToolbar
+        fsActive={fsActive}
+        onToggleFs={() => setFsActive((v) => !v)}
+      />
+      <StageContent
+        bg={bg}
+        messages={messages}
+        composerValue={draft}
+        onComposerChange={setDraft}
+        onComposerSend={handleSend}
+        showChat={showChat}
+      />
 
-	function fakeSend(e: React.FormEvent) {
-		e.preventDefault();
-		if (!message.trim()) return;
-		setSending(true);
-		setTimeout(() => {
-			setSending(false);
-			setMessage("");
-		}, 800);
-	}
+      {/* Creating overlay */}
+      {creating && (
+        <div className="absolute inset-0 z-20">
+          <LoadingOverlay alt={creatingText ?? "Creating…"} />
+        </div>
+      )}
+    </div>
+  );
 
-	const StageShell = (
-		<div className="relative h-full w-full rounded-3xl overflow-hidden bg-[#0c0c0c]">
-			{/* Background (swap with <canvas/> later) */}
-			{bg && (
-				<img
-					src={bg}
-					alt="Agent stage"
-					className="absolute inset-0 w-full h-full object-cover"
-					onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-				/>
-			)}
+  return (
+    <div className="relative w-full h-full">
+      {/* Normal (embedded) view */}
+      {!fsActive && <div className="h-full w-full">{stage}</div>}
 
-			{/* Overlay grid */}
-			<div className="absolute inset-0 grid grid-rows-[auto_1fr_auto]">
-				{/* Top bar */}
-				<div className="p-3 sm:p-4 flex items-center gap-3">
-					<button className="w-9 h-9 sm:w-10 sm:h-10 rounded-full grid place-items-center bg-black/60 text-white">
-						<Zap className="w-5 h-5" />
-					</button>
-					<button className="w-9 h-9 sm:w-10 sm:h-10 rounded-full grid place-items-center bg-black/60 text-white">
-						<Volume2 className="w-5 h-5" />
-					</button>
-					<button
-						className="ml-auto w-9 h-9 sm:w-10 sm:h-10 rounded-full grid place-items-center bg-black/60 text-white"
-						onClick={() => (fsMounted ? exitFs() : enterFs())}
-						title={isFullscreen ? "Exit Fullscreen (Esc)" : "Enter Fullscreen"}
-					>
-						{isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-					</button>
-				</div>
+      {/* Fullscreen view */}
+      <FullscreenPortal active={fsActive}>{stage}</FullscreenPortal>
+    </div>
+  );
+}
 
-				{/* Middle spacer (agent sits behind) */}
-				<div />
+/* =============================================================
+ * Toolbar
+ * ============================================================= */
+function StageToolbar({
+  fsActive,
+  onToggleFs,
+}: {
+  fsActive: boolean;
+  onToggleFs: () => void;
+}) {
+  return (
+    <div className="absolute z-10 inset-x-0 top-3 flex items-center justify-between px-3">
+      {/* Left group: lightning + volume (like the mock) */}
+      <div className="flex items-center gap-2">
+        <div className="grid place-items-center w-10 h-10 rounded-full bg-black/30 border border-[#222] text-white">
+          <Zap className="w-5 h-5" />
+        </div>
+        <div className="grid place-items-center w-10 h-10 rounded-full bg-black/30 border border-[#222] text-white">
+          <Volume2 className="w-5 h-5" />
+        </div>
+      </div>
 
-				{/* Bottom chat bar */}
-				{showChat && (
-					<form onSubmit={fakeSend} className="p-3 sm:p-4 flex items-center gap-3">
-						<input
-							className="flex-1 rounded-full bg-white/90 text-black placeholder-black/60 px-4 sm:px-5 py-3"
-							placeholder="Type your message..."
-							value={message}
-							onChange={(e) => setMessage(e.target.value)}
-						/>
-						<button
-							type="submit"
-							className="w-11 h-11 sm:w-12 sm:h-12 rounded-full grid place-items-center"
-							style={{ backgroundColor: ACCENT }}
-						>
-							<Send className="w-5 h-5 text-black" />
-						</button>
-					</form>
-				)}
-
-				{/* NEW: Creating overlay (blurs stage + blocks interaction) */}
-				{creating && (
-					<div className="absolute inset-0 z-50 bg-black/35 backdrop-blur-sm flex items-center justify-center">
-						<div className="text-center px-6 py-4 rounded-2xl bg-black/40 border border-white/10">
-							<div className="text-white text-lg sm:text-xl font-extrabold">
-								{creatingText}
-								<span aria-live="polite">{dots}</span>
-							</div>
-							<div className="mt-1 text-xs text-white/70">
-								Please wait…
-							</div>
-						</div>
-					</div>
-				)}
-
-			</div>
-
-			<LoadingOverlay open={sending} gifSrc="src/assets/loader.gif" size={140} dimOpacity={0.2} />
-		</div>
-	);
-
-	// Normal (inside center column)
-	if (!fsMounted) {
-		return <div className="h-full min-h-full">{StageShell}</div>;
-	}
-
-	// Fullscreen overlay with fast fade/scale
-	return createPortal(
-		<div
-			className={`fixed inset-0 z-[9999] bg-black transition-opacity duration-200 ${fsActive ? "opacity-100" : "opacity-0"
-				}`}
-		>
-			<div className="absolute inset-0 p-3 sm:p-6">
-				<div
-					className={`h-full w-full transition-transform duration-200 ${fsActive ? "scale-100" : "scale-95"
-						}`}
-				>
-					{StageShell}
-				</div>
-			</div>
-		</div>,
-		document.body
-	);
+      {/* Right: fullscreen toggle */}
+      <button
+        type="button"
+        onClick={onToggleFs}
+        className="grid place-items-center w-10 h-10 rounded-full bg-black/30 border border-[#222] text-white"
+        title={fsActive ? "Minimize" : "Maximize"}
+      >
+        {fsActive ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+      </button>
+    </div>
+  );
 }
