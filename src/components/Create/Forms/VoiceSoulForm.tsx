@@ -52,7 +52,7 @@ export default function VoiceSoulForm({
   initial,
   onChange,
 }: VoiceSoulFormProps) {
-  const [advancedOpen, setAdvancedOpen] = useState<boolean>(true);
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
   const [state, setState] = useState<VoiceSoulState>({
     language: initial?.language || "en",
     voice: initial?.voice || "alex",

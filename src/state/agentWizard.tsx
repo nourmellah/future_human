@@ -13,7 +13,7 @@ export type StepId = typeof STEPS[number];
 
 /* ---------- Slices ---------- */
 export type IdentityData = { name: string; role: string; description: string };
-export type AppearanceData = { personaId: string | null };
+export type AppearanceData = { personaId: string | null; bgColor?: string };
 export type VoiceSoulData = {
   language: string; voice: string;
   styleFormality: number; stylePace: number;
@@ -47,7 +47,7 @@ export type WizardState = {
 export const defaultState: WizardState = {
   current: "identity",
   identity: { name: "", role: "", description: "" },
-  appearance: { personaId: null },
+appearance: { personaId: null, bgColor: "#2a2a2a" },
   voiceSoul: {
     language: "en", voice: "alex",
     styleFormality: 5, stylePace: 5,

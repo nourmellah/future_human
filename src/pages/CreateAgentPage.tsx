@@ -95,12 +95,12 @@ function RightPanel() {
       <div className="h-px w-full bg-[#1e1e1e] my-5" />
 
       {/* Step buttons */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center justify-center gap-4 mb-6">
         {STEPS.map(({ key, Icon }, idx) => {
           const isCurrent = key === active;
           const isPast = idx < activeIndex;
-          const bg = isCurrent ? ACCENT : isPast ? DONE : "#0b0b0b";
-          const color = isCurrent || isPast ? "#000" : "#fff";
+          const bg = isCurrent ? ACCENT : isPast ? DONE : "#fff";
+          const color = "#000";
           return (
             <button
               key={key}
@@ -132,7 +132,7 @@ function RightPanel() {
           {/* PersonaForm in your repo expects selectedId/onSelect(persona) */}
           <PersonaForm
             selectedId={state.appearance.personaId ?? undefined}
-            onSelect={(p) => save("appearance", { personaId: p })}
+            onSelect={(p) => save("appearance", { personaId: p, bgColor: state.appearance.bgColor })}
           />
           <StepFooter onBack={back} onNext={() => { saveDraft(); next(); }} />
         </>
@@ -200,10 +200,10 @@ export default function CreateAgentPage() {
   return (
     <AgentWizardProvider>
       <ThreePaneLayout
-        sidebar={<SidebarNav agents={agents}  />}
+        sidebar={<SidebarNav agents={agents} />}
         center={<CenterStage />}
-        right={<RightPanel />}              
-        rightWidth={520}                   
+        right={<RightPanel />}
+        rightWidth={520}
       />
     </AgentWizardProvider>
   );

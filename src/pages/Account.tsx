@@ -22,8 +22,7 @@ export default function AccountPage() {
       sidebar={
         <SidebarNav
           agents={agents}
-          activeAgentId={"1"}
-          onAgentClick={(a) => console.log("open agent", a)}
+          activeAgentId={"0"}
         />
       }
       center={<p>Account Information</p>}

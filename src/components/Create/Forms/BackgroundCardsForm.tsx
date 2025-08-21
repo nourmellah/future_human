@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Image as Lock, Crown } from "lucide-react";
+import { Plus, Image as Lock, Crown, X } from "lucide-react";
+import DropZone from "../../Form/DropZone";
 
 const ACCENT = "#E7E31B";
 
@@ -30,14 +31,14 @@ export type BackgroundCardsFormProps = {
 async function fetchBackgroundsStub(): Promise<BackgroundCard[]> {
   // Replace with your API (e.g., GET /api/backgrounds)
   return [
-    { id: "dubai",     name: "Dubai",      thumbnail: "/assets/bg/dubai.jpg" },
-    { id: "bali",      name: "Bali",       thumbnail: "/assets/bg/bali.jpg" },
-    { id: "greece",    name: "Greece",     thumbnail: "/assets/bg/greece.jpg" },
-    { id: "djerba",    name: "Djerba",     thumbnail: "/assets/bg/djerba.jpg" },
-    { id: "phil",      name: "Philippines",thumbnail: "/assets/bg/philippines.jpg" },
-    { id: "italy",     name: "Italy",      thumbnail: "/assets/bg/italy.jpg" },
-    { id: "paris",     name: "Paris",      thumbnail: "/assets/bg/paris.jpg" },
-    { id: "la",        name: "Los Angeles",thumbnail: "/assets/bg/la.jpg" },
+    { id: "dubai", name: "Dubai", thumbnail: "/assets/bg/dubai.jpg" },
+    { id: "bali", name: "Bali", thumbnail: "/assets/bg/bali.jpg" },
+    { id: "greece", name: "Greece", thumbnail: "/assets/bg/greece.jpg" },
+    { id: "djerba", name: "Djerba", thumbnail: "/assets/bg/djerba.jpg" },
+    { id: "phil", name: "Philippines", thumbnail: "/assets/bg/philippines.jpg" },
+    { id: "italy", name: "Italy", thumbnail: "/assets/bg/italy.jpg" },
+    { id: "paris", name: "Paris", thumbnail: "/assets/bg/paris.jpg" },
+    { id: "la", name: "Los Angeles", thumbnail: "/assets/bg/la.jpg" },
   ];
 }
 
@@ -83,10 +84,35 @@ function AddBackgroundModal({
 }) {
   const [name, setName] = useState("");
   const [thumb, setThumb] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  function clearLocal(opts: { revoke?: boolean } = {}) {
+    const { revoke = false } = opts;
+    if (revoke && thumb && thumb.startsWith("blob:")) {
+      try { URL.revokeObjectURL(thumb); } catch {}
+    }
+    setName("");
+    setThumb("");
+    setFile(null);
+  }
+
+  // close wrapper used by overlay or Cancel
+  function handleClose() {
+    clearLocal({ revoke: true });  // cancel -> safe to revoke
+    onClose();
+  }
+
+  // also clear if parent programmatically closes the modal
+  useEffect(() => {
+    if (!open) {
+      clearLocal({ revoke: true });
+    }
+  }, [open]);
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={handleClose}>
       <div className="text-white font-extrabold text-lg mb-3">Add Background</div>
+
       <label className="block mb-3">
         <span className="block text-xs text-gray-300 mb-1">Name</span>
         <input
@@ -96,21 +122,28 @@ function AddBackgroundModal({
           placeholder="e.g., Santorini"
         />
       </label>
-      <label className="block">
-        <span className="block text-xs text-gray-300 mb-1">Image URL</span>
-        <input
-          className="w-full rounded-xl bg-[#111] text-white border border-[#222] px-3 py-2 outline-none"
-          value={thumb}
-          onChange={(e) => setThumb(e.target.value)}
-          placeholder="https://…/image.jpg"
-        />
-      </label>
+
+      {/* Image upload (click or drag & drop) */}
+      <div className="mb-1 text-xs text-gray-300">Image</div>
+      <DropZone value={thumb} onChange={setThumb} onFile={setFile} />
+
       <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onClose} className="px-4 py-2 rounded-full border border-[#333] text-white">Cancel</button>
+        <button onClick={handleClose} className="px-4 py-2 rounded-full border border-[#333] text-white">
+          Cancel
+        </button>
         <button
           onClick={() => {
-            if (!name.trim() || !thumb.trim()) return;
-            onCreate({ id: uid(), name: name.trim(), thumbnail: thumb.trim() });
+            if (!name.trim() || (!thumb && !file)) return;
+            // use existing preview from DropZone or create one from File
+            const preview = thumb || (file ? URL.createObjectURL(file) : "");
+            onCreate({
+              id: uid(),
+              name: name.trim(),
+              thumbnail: preview,                         // grid <img src> uses this
+              payload: file ? { fileName: file.name, fileType: file.type } : undefined,
+            });
+            // DO NOT revoke here; the card needs the object URL
+            clearLocal({ revoke: false });
             onClose();
           }}
           className="px-4 py-2 rounded-full font-extrabold"
@@ -148,39 +181,49 @@ function CardTile({
   item,
   active,
   onSelect,
+  onRemove
 }: {
   item: BackgroundCard;
   active: boolean;
   onSelect: () => void;
+  onRemove: () => void;
 }) {
-  const badge =
-    item.locked || item.badge ? (
-      <div className="absolute right-2 top-2 w-6 h-6 rounded-full grid place-items-center" style={{ backgroundColor: ACCENT }}>
-        {item.badge === "crown" ? <Crown className="w-4 h-4 text-black" /> : <Lock className="w-4 h-4 text-black" />}
-      </div>
-    ) : null;
+  const badge = item.locked || item.badge ? (
+    <div className="absolute left-2 top-2 w-6 h-6 rounded-full grid place-items-center" style={{ backgroundColor: ACCENT }}>
+      {item.badge === "crown" ? <Crown className="w-4 h-4 text-black" /> : <Lock className="w-4 h-4 text-black" />}
+    </div>
+  ) : null;
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`relative rounded-2xl border overflow-hidden aspect-[4/3] text-left
+    <>
+      <button
+        type="button"
+        onClick={onSelect}
+        className={`relative rounded-2xl border overflow-hidden aspect-[4/3] text-left
                   ${active ? "border-transparent" : "border-[#232323]"} bg-[#0b0b0b]`}
-      style={{ boxShadow: active ? `0 0 0 3px ${ACCENT}` : undefined }}
-      title={item.name}
-    >
-      {badge}
-      <img
-        src={item.thumbnail}
-        alt={item.name}
-        className="absolute inset-0 w-full h-full object-cover"
-        onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-      />
-      {/* Label bar */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-1.5">
-        <div className="text-[11px] text-white truncate">{item.name}</div>
-      </div>
-    </button>
+        style={{ boxShadow: active ? `0 0 0 3px ${ACCENT}` : undefined }}
+        title={item.name}
+      >
+        {badge}
+        <img
+          src={item.thumbnail}
+          alt={item.name}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")} />
+        {/* Label bar */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-1.5">
+          <div className="text-[11px] text-white truncate">{item.name}</div>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="absolute top-2 right-2 w-7 h-7 grid place-items-center rounded-full bg-black/60 hover:bg-black/80 text-white"
+          title="Remove"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </button>
+    </>
   );
 }
 
@@ -248,6 +291,11 @@ export default function BackgroundCardsForm({
             item={bg}
             active={selectedId === bg.id}
             onSelect={() => select(bg)}
+            onRemove={() => {
+              setItems((prev) => prev ? prev.filter((i) => i.id !== bg.id) : prev);
+              setSelectedId((prev) => (prev === bg.id ? null : prev));
+            }}
+
           />
         ))}
 

@@ -32,7 +32,11 @@ export default function App() {
           }
         >
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={
+              <Protected>
+                <Navigate to="/create" replace />
+              </Protected>
+            } />
             <Route path="/auth" element={<AuthScreens defaultMode="login" />} />
             <Route path="/account" element={
               <Protected>

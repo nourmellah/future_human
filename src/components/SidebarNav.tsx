@@ -14,71 +14,62 @@ export type SidebarNavProps = {
 	activeAgentId?: string;
 	className?: string;
 	renderAgent?: (agent: Agent, active: boolean, onClick: () => void) => React.ReactNode;
-	bottomSlot?: React.ReactNode;
 };
 
 const ACCENT = "#E7E31B";
 
 export const SidebarAgentCard: React.FC<{
-	agent: Agent;
-	active?: boolean;
-	onClick?: (a: Agent) => void;
+  agent: Agent;
+  active?: boolean;
+  onClick?: (a: Agent) => void;
 }> = ({ agent, active, onClick }) => {
-	return (
-		<button
-			onClick={() => onClick?.(agent)}
-			className="w-full text-left focus:outline-none group"
-			aria-label={`Open ${agent.name}`}
-		>
-			{/* Square container with rounded corners and accent border when active */}
-			<div
-				className={`relative aspect-square rounded-2xl overflow-hidden transition-shadow border-2 mx-0 ${active ? "border-[var(--accent)]" : "border-transparent"
-					}`}
-				style={{
-					// expose CSS var for accent border
-					// @ts-ignore
-					"--accent": ACCENT,
-					boxShadow: active ? `0 0 0 1px ${ACCENT}` : undefined,
-				}}
-			>
-				{/* Full‑bleed image */}
-				<img
-					src={agent.thumbnail}
-					alt={agent.name}
-					className="absolute inset-0 h-full w-full object-cover"
-					onError={(e) => {
-						// If thumb fails, show a subtle fallback
-						const el = e.currentTarget as HTMLImageElement;
-						el.style.display = "none";
-					}}
-				/>
+  return (
+    <button
+      onClick={() => onClick?.(agent)}
+      className="w-full text-left focus:outline-none group"
+      aria-label={`Open ${agent.name}`}
+    >
+      <div
+        className={`
+          relative aspect-square rounded-2xl overflow-hidden border-2
+          transition-all duration-200 ease-out
+          ${active ? "border-[var(--accent)] scale-[1.01]" : "border-transparent"}
+          hover:border-[var(--accent)] hover:scale-[1.01]
+        `}
+        style={{ ["--accent" as any]: ACCENT }}
+      >
+        {/* image */}
+        <img
+          src={agent.thumbnail}
+          alt={agent.name}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
 
-
-				{/* Bottom gradient for text readability */}
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-
-
-				{/* Name/role overlay */}
-				<div className="absolute inset-x-0 bottom-0 p-3">
-					<div className="text-white text-sm font-extrabold leading-tight truncate">{agent.name}</div>
-					<div className="text-[10px] text-gray-300 uppercase tracking-wide truncate">{agent.role || " "}</div>
-				</div>
-			</div>
-		</button>
-	);
+        {/* FULL-WIDTH BOTTOM BAR — not floating */}
+        <div className="absolute inset-x-0 bottom-0">
+          <div className="bg-[#232327]/95 text-white text-center px-4 py-2">
+            <div className="text-base font-extrabold leading-tight truncate">{agent.name}</div>
+            <div className="text-[11px] uppercase tracking-widest leading-tight opacity-90 truncate">
+              {agent.role || " "}
+            </div>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
 };
+
 
 const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
 	agents = [],
 	activeAgentId,
 	className = "",
 	renderAgent,
-	bottomSlot,
 	children,
 }) => {
-
 	const navigate = useNavigate()
-	
+
 	const onAgentClick = (agent: Agent) => {
 		navigate(`/agents/${agent.id}`);
 	};
@@ -127,7 +118,6 @@ const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
 			{/* FOOTER — vertically centered, reduced vertical space */}
 			<footer className="flex-none px-0 p-0 m-0 mt-auto">
 				<button className="w-full h-14 md:h-16 flex items-center justify-center text-center p-0 m-0">
-					{bottomSlot}
 					<Link to="/account" className="block text-white font-extrabold uppercase tracking-wide">
 						Account
 					</Link>
