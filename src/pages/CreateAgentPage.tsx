@@ -202,7 +202,7 @@ export default function CreateAgentPage() {
       <ThreePaneLayout
         sidebar={<SidebarNav agents={agents} />}
         center={<CenterStage />}
-        right={<RightPanel />}
+        right={<div className="h-full pr-7 lg:pr-8"><RightPanel /></div>}
         rightWidth={520}
       />
     </AgentWizardProvider>
