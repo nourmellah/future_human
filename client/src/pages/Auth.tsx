@@ -14,38 +14,16 @@ export type RegisterPayload = {
 	password: string;
 };
 
-export type FormProps<Payload> = {
-	onSwitch: () => void;
-	onSubmit?: (payload: Payload) => Promise<void> | void;
-};
-
 export type AuthHandlers = {
 	onLogin?: (p: LoginPayload) => Promise<void> | void;
 	onRegister?: (p: RegisterPayload) => Promise<void> | void;
 };
 
-// === Empty submit functions to implement ===
-export async function submitLogin(payload: LoginPayload): Promise<void> {
-	// TODO: plug Spring Boot here
-	// Example:
-	// await fetch("/api/auth/login", {
-	//   method: "POST",
-	//   headers: { "Content-Type": "application/json" },
-	//   body: JSON.stringify(payload),
-	// });
-	console.log("submitLogin() payload:", payload);
-}
-
-export async function submitRegister(payload: RegisterPayload): Promise<void> {
-	// TODO: plug Spring Boot here
-	// Example:
-	// await fetch("/api/auth/register", {
-	//   method: "POST",
-	//   headers: { "Content-Type": "application/json" },
-	//   body: JSON.stringify(payload),
-	// });
-	console.log("submitRegister() payload:", payload);
-}
+export type FormProps<Payload> = {
+	onSwitch: () => void;
+	onSubmit?: (payload: Payload) => Promise<void> | void;
+	error?: string;
+};
 
 // === Static config (assets + accent) ===
 const FACE_SRC = "src/assets/face.png";
@@ -76,7 +54,7 @@ function DividerOr() {
 	);
 }
 
-function LoginForm({ onSwitch, onSubmit }: FormProps<LoginPayload>) {
+function LoginForm({ onSwitch, onSubmit, error }: FormProps<LoginPayload>) {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [loading, setLoading] = useState(false);
@@ -100,6 +78,11 @@ function LoginForm({ onSwitch, onSubmit }: FormProps<LoginPayload>) {
 				aria-label="Login form"
 			>
 				<h1 className="text-3xl font-extrabold text-white mb-8">Login to your Account</h1>
+				{error && (
+					<p className="text-xs text-red-400 -mt-3 mb-3">
+						{error}
+					</p>
+				)}
 				<Field
 					label="Email"
 					type="email"
@@ -245,34 +228,46 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 	const [mode, setMode] = useState(defaultMode);
 	const [imgFailed, setImgFailed] = React.useState(!FACE_SRC);
 	const [imgLoading, setImgLoading] = useState(!!FACE_SRC && !imgFailed);
+	const [loginError, setLoginError] = useState("");
+
 	const isLogin = mode === "login";
 
-	// If no handlers are passed, use the exported placeholders
-	const { loginWithTokens } = useAuth();
-	const navigate = useNavigate()
-	
-	// Use provided onLogin handler if passed, otherwise use a demo implementation that accepts LoginPayload
-	const loginHandler: (p: LoginPayload) => Promise<void> | void = onLogin ?? (async (payload: LoginPayload) => {
-		// TODO: call your backend here and get tokens using payload.email / payload.password
-		// const res = await fetch("/api/auth/login", {
-		//   method: "POST",
-		//   headers: { "Content-Type": "application/json" },
-		//   body: JSON.stringify(payload),
-		// });
-		// const { accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt } = await res.json();
-	
-		// For now, just simulate by setting short-lived tokens (DEMO ONLY)
-		const now = Date.now();
-		loginWithTokens({
-			accessToken: "demo_access",
-			refreshToken: "demo_refresh",
-			accessTokenExpiresAt: now + 15 * 60 * 1000,  // 15 minutes
-			refreshTokenExpiresAt: now + 7 * 24 * 60 * 60 * 1000, // 7 days
-		});
+	const { login, register } = useAuth()
+	const navigate = useNavigate();
 
-		navigate("/account", { replace: true });
-	});
-	const registerHandler = onRegister ?? submitRegister;
+	// Login submit handler
+	const loginHandler = async (values: { email: string; password: string }) => {
+		try {
+			await login(values.email.trim(), values.password);
+			// Success: AuthProvider sets user/token; your route guards/effects can redirect.
+			if (onLogin) await onLogin({ email: values.email, password: values.password });
+			navigate("/create"); // Redirect after login
+		} catch (err: any) {
+			console.error('Login failed:', err?.response?.data ?? err);
+			// surface in your UI if you have a toast/state here
+			// e.g., toast.error(err?.response?.data?.message ?? 'Invalid credentials')
+			setLoginError(err?.response?.data?.error ?? 'Invalid credentials');
+		}
+	};
+
+	// Register submit handler
+	const registerHandler = async (values: { name?: string; email: string; password: string }) => {
+		try {
+			await register({
+				name: values.name?.trim() || undefined,
+				email: values.email.trim(),
+				password: values.password,
+			});
+			// Success: user is set by AuthProvider.
+			// if (onRegister) await onRegister({ firstName: values.name?.trim(), email: values.email, password: values.password });
+			navigate("/account"); // Redirect after login
+		} catch (err: any) {
+			console.error('Registration failed:', err?.response?.data ?? err);
+			// surface in your UI if you have a toast/state here
+			// e.g., toast.error(err?.response?.data?.message ?? 'Could not create account')
+		}
+	};
+
 
 	return (
 		<div className="min-h-screen w-full bg-black text-white">
@@ -328,7 +323,7 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 						</div>
 
 						{isLogin ? (
-							<LoginForm onSwitch={() => setMode("register")} onSubmit={loginHandler} />
+							<LoginForm onSwitch={() => setMode("register")} onSubmit={loginHandler} error={loginError} />
 						) : (
 							<RegisterForm onSwitch={() => setMode("login")} onSubmit={registerHandler} />
 						)}

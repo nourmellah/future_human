@@ -1,182 +1,138 @@
-import React from "react";
+// src/AuthProvider.tsx
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { setCurrentUser } from "../session";
+import type { User } from '../services/auth';
+import { login as apiLogin, register as apiRegister, logout as apiLogout, me, refresh } from '../services/auth';
+import { setAccessTokenGetter, setAccessTokenHandler } from '../lib/api';
 
-type Tokens = {
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAt: number;   // epoch ms
-  refreshTokenExpiresAt: number;  // epoch ms
+type AuthContextShape = {
+  user: User | null;
+  accessToken: string | null;
+  loading: boolean;
+
+  login: (email: string, password: string) => Promise<void>;
+  register: (payload: Record<string, unknown>) => Promise<void>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+
+  // Back-compat shim so older code paths won’t crash
+  loginWithTokens: (payload: { user: User; accessToken: string }) => void;
 };
 
-type AuthContextValue = {
-  isHydrated: boolean;            // we've loaded from storage at least once
-  isAuthenticated: boolean;
-  tokens: Tokens | null;
-  loginWithTokens: (t: Tokens) => void;    // set tokens received from backend
-  logout: () => void;
-  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-};
+const AuthContext = createContext<AuthContextShape | undefined>(undefined);
 
-const AuthContext = React.createContext<AuthContextValue | null>(null);
-
-const LS_KEY = "fh:auth:v1";
-
-function loadTokens(): Tokens | null {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const t = JSON.parse(raw) as Tokens;
-    if (!t?.accessToken || !t?.refreshToken) return null;
-    return t;
-  } catch { return null; }
+export function useAuth(): AuthContextShape {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
 }
-function saveTokens(t: Tokens | null) {
-  try {
-    if (!t) localStorage.removeItem(LS_KEY);
-    else localStorage.setItem(LS_KEY, JSON.stringify(t));
-  } catch {}
-}
 
-// ⬇️ Backend “adapters” — left EMPTY on purpose (your team will wire these).
-type RefreshResult = {
-  accessToken: string;
-  accessTokenExpiresAt: number;     // epoch ms
-  refreshToken?: string;            // optional new refresh token
-  refreshTokenExpiresAt?: number;   // epoch ms
-};
-type AuthAdapters = {
-  /** Replace with a call to your Spring Boot refresh endpoint */
-  refresh?: (refreshToken: string) => Promise<RefreshResult>;
-};
-const defaultAdapters: AuthAdapters = {
-  refresh: async (_rt) => {
-    // TODO: call your backend: POST /auth/refresh
-    // For now, throw so you can see it’s not wired.
-    throw new Error("Refresh token flow not wired yet.");
-  },
-};
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export function AuthProvider({
-  children,
-  adapters = defaultAdapters,
-}: {
-  children: React.ReactNode;
-  adapters?: AuthAdapters;
-}) {
-  const [isHydrated, setHydrated] = React.useState(false);
-  const [tokens, setTokens] = React.useState<Tokens | null>(null);
-  const refreshTimer = React.useRef<number | null>(null);
+  // keep the latest token in a ref so the API getter is always fresh
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = accessToken;
 
-  // hydrate once
-  React.useEffect(() => {
-    const t = loadTokens();
-    setTokens(t);
-    setHydrated(true);
+  // Wire the API wrapper (if you use it) so requests always read the latest token
+  useEffect(() => {
+    try {
+      setAccessTokenGetter?.(() => tokenRef.current ?? null);
+      // Let the API wrapper push new tokens back to us after a refresh
+      setAccessTokenHandler?.((nextToken: string | null | undefined) => {
+        setAccessToken(nextToken ?? null);
+      });
+    } catch {
+      // If your wrapper doesn't export these, ignore silently
+    }
   }, []);
 
-  // schedule refresh before access expiry (5s early)
-  const scheduleRefresh = React.useCallback((t: Tokens | null) => {
-    if (refreshTimer.current) {
-      window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = null;
+  const initSession = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1) ask who I am (httpOnly session via cookie)
+      const meRes = await me(); // { user: User | null }
+      setUser(meRes.user ?? null);
+      setCurrentUser(meRes.user ?? null);
+
+      // 2) try to obtain an access token (if your backend issues one)
+      const r = await refresh(); // { accessToken?: string }
+      if (r?.accessToken) setAccessToken(r.accessToken ?? null);
+    } catch {
+      setUser(null);
+      setAccessToken(null);
+    } finally {
+      setLoading(false);
     }
-    if (!t) return;
-
-    const now = Date.now();
-    const msUntil = Math.max(0, t.accessTokenExpiresAt - now - 5000);
-    if (msUntil === 0) return; // will be attempted lazily on first request
-
-    refreshTimer.current = window.setTimeout(async () => {
-      try {
-        await doRefresh();
-      } catch {
-        // if refresh fails, keep tokens but next apiFetch will logout on 401
-      }
-    }, msUntil);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adapters]);
-
-  React.useEffect(() => {
-    scheduleRefresh(tokens);
-    return () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-    };
-  }, [tokens, scheduleRefresh]);
-
-  const loginWithTokens = React.useCallback((t: Tokens) => {
-    setTokens(t);
-    saveTokens(t);
   }, []);
 
-  const logout = React.useCallback(() => {
-    setTokens(null);
-    saveTokens(null);
+  useEffect(() => {
+    void initSession();
+  }, [initSession]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    // auth.ts contract: { user, accessToken }
+    const { user: u, accessToken: at } = await apiLogin({ email, password });
+    setUser(u);
+    setCurrentUser(u);
+    setAccessToken(at ?? null);
   }, []);
 
-  async function doRefresh(): Promise<void> {
-    if (!tokens) throw new Error("No tokens");
-    if (!adapters.refresh) throw new Error("No refresh adapter");
+  const register = useCallback(async (payload: Record<string, unknown>) => {
+    // auth.ts contract: { user, accessToken }
+    const { user: u, accessToken: at } = await apiRegister(payload as any);
+    setUser(u);
+    setCurrentUser(u);
+    setAccessToken(at ?? null);
+  }, []);
 
-    // if refresh token already expired, logout
-    if (Date.now() >= tokens.refreshTokenExpiresAt) {
-      logout();
-      throw new Error("Refresh token expired");
+  const doLogout = useCallback(async () => {
+    try {
+      await apiLogout();
+    } finally {
+      setUser(null);
+      setCurrentUser(null);
+      setAccessToken(null);
     }
+  }, []);
 
-    const res = await adapters.refresh(tokens.refreshToken);
-    const next: Tokens = {
-      accessToken: res.accessToken,
-      accessTokenExpiresAt: res.accessTokenExpiresAt,
-      refreshToken: res.refreshToken ?? tokens.refreshToken,
-      refreshTokenExpiresAt: res.refreshTokenExpiresAt ?? tokens.refreshTokenExpiresAt,
-    };
-    setTokens(next);
-    saveTokens(next);
-  }
+  const doRefresh = useCallback(async () => {
+    const r = await refresh();
+    if (r?.accessToken) setAccessToken(r.accessToken ?? null);
+  }, []);
 
-  // Safe fetch wrapper: adds Authorization, retries once after refresh on 401
-  const apiFetch = React.useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const doFetch = async (withAuth = true) => {
-      const headers = new Headers(init?.headers || {});
-      if (withAuth && tokens?.accessToken) {
-        headers.set("Authorization", `Bearer ${tokens.accessToken}`);
-      }
-      const resp = await fetch(input, { ...init, headers });
-      return resp;
-    };
+  // Back-compat for old callers that were doing manual token injection
+  const loginWithTokens = useCallback((payload: { user: User; accessToken: string }) => {
+    setUser(payload.user);
+    setAccessToken(payload.accessToken ?? null);
+  }, []);
 
-    let resp = await doFetch(true);
+  useEffect(() => { setCurrentUser(user); }, [user]);
 
-    if (resp.status === 401 && tokens?.refreshToken) {
-      // try refresh once
-      try {
-        await doRefresh();
-      } catch {
-        logout();
-        return resp;
-      }
-      resp = await doFetch(true);
-      if (resp.status === 401) {
-        logout();
-      }
-    }
-
-    return resp;
-  }, [tokens, logout]); // doRefresh binds tokens/adapters from closure
-
-  const value: AuthContextValue = {
-    isHydrated,
-    isAuthenticated: !!tokens && Date.now() < tokens.refreshTokenExpiresAt,
-    tokens,
-    loginWithTokens,
-    logout,
-    apiFetch,
-  };
+  const value = useMemo<AuthContextShape>(
+    () => ({
+      user,
+      accessToken,
+      loading,
+      login,
+      register,
+      logout: doLogout,
+      refresh: doRefresh,
+      loginWithTokens,
+    }),
+    [user, accessToken, loading, login, register, doLogout, doRefresh, loginWithTokens]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const ctx = React.useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
-  return ctx;
 }
