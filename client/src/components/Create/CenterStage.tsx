@@ -48,8 +48,8 @@ export function MessageBubble({
     msg.status === "pending"
       ? "border-yellow-400"
       : msg.status === "error"
-      ? "border-red-500"
-      : "border-[#e5e7eb]"; // neutral like gray-200
+        ? "border-red-500"
+        : "border-[#e5e7eb]"; // neutral like gray-200
 
   const align = msg.role === "user" ? "ml-auto" : "mr-auto";
 
@@ -129,7 +129,7 @@ export function ComposeBar({
       className={`absolute bottom-4 right-4 w-[420px] max-w-[85vw] ${className}`}
       aria-label="Compose message"
     >
-      <div className="flex items-center gap-2 rounded-2xl border border-[#222] bg-[#0b0b0b]/95 px-3 py-2">
+      <div className="flex items-center gap-2">
         <input
           type="text"
           value={value}
@@ -138,7 +138,7 @@ export function ComposeBar({
             if (e.key === "Enter" && !e.shiftKey) onSend();
           }}
           placeholder="Type a message…"
-          className="flex-1 h-10 bg-transparent outline-none text-white placeholder:text-gray-400"
+          className="flex-1 h-10 px-3 rounded-xl bg-white text-black placeholder:text-gray-500 outline-none"
         />
 
         <button
@@ -159,6 +159,7 @@ export function ComposeBar({
           <Volume2 className="w-4 h-4 text-white" />
         </button>
       </div>
+
     </div>
   );
 }
@@ -216,28 +217,35 @@ function StageContent({
 /* =============================================================
  * Fullscreen portal shell
  * ============================================================= */
-function FullscreenPortal({
-  children,
-  active,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-}) {
-  if (!active) return null;
+function FullscreenPortal({ children, active }: { children: React.ReactNode; active: boolean }) {
+  const [mounted, setMounted] = React.useState(active);
+  const [visible, setVisible] = React.useState(active);
+
+  React.useEffect(() => {
+    if (active) {
+      setMounted(true);
+      // next frame → enable transitions
+      const id = requestAnimationFrame(() => setVisible(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      setVisible(false);
+      const t = setTimeout(() => setMounted(false), 250); // keep mounted for fade-out
+      return () => clearTimeout(t);
+    }
+  }, [active]);
+
+  if (!mounted) return null;
+
   return createPortal(
     <div
-      className={`fixed inset-0 z-[9999] bg-black transition-opacity duration-${DURATION} ${
-        active ? "opacity-100" : "opacity-0"
-      }`}
+      className={`fixed inset-0 z-[9999] bg-black/90 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"
+        }`}
     >
-      <div className="absolute inset-0 p-3 sm:p-6">
-        <div
-          className={`h-full w-full transition-transform duration-200 ${
-            active ? "scale-100" : "scale-95"
+      <div
+        className={`absolute inset-0 p-3 sm:p-6 transition-transform duration-300 ${visible ? "scale-100" : "scale-95"
           }`}
-        >
-          {children}
-        </div>
+      >
+        {children}
       </div>
     </div>,
     document.body
@@ -263,7 +271,7 @@ export default function CenterStage({
   ]);
   const [draft, setDraft] = useState("");
 
-  const messages = controlledMessages ?? localMessages;
+  const messages = localMessages;
 
   // --- fullscreen toggle ---
   const [fsActive, setFsActive] = useState(false);
