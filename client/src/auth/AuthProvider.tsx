@@ -1,4 +1,3 @@
-// src/AuthProvider.tsx
 import React, {
   createContext,
   useCallback,

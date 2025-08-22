@@ -18,15 +18,15 @@ export type User = {
 };
 
 export type LoginInput = { email: string; password: string };
-export type RegisterInput = {
+export type RegisterInput = { 
   firstName: string;
   lastName: string;
   email: string;
   password: string;
   phoneNumber?: string;
   address?: string;
-  codePostal?: string;
-  pays?: string;
+  postalCode?: string;
+  country?: string;
 };
 
 export async function login(input: LoginInput): Promise<{ user: User; accessToken: string }> {

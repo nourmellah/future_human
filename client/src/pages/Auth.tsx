@@ -251,10 +251,11 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 	};
 
 	// Register submit handler
-	const registerHandler = async (values: { name?: string; email: string; password: string }) => {
+	const registerHandler = async (values: { firstName: string; lastName: string; email: string; password: string }) => {
 		try {
 			await register({
-				name: values.name?.trim() || undefined,
+				firstName: values.firstName?.trim() || undefined,
+				lastName: values.lastName?.trim() || undefined,
 				email: values.email.trim(),
 				password: values.password,
 			});
@@ -284,10 +285,9 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 							<img
 								src={FACE_SRC}
 								alt="Futuristic human face"
-								className="absolute inset-0 w-full h-full object-cover opacity-90"
+								className="absolute inset-0 w-full h-full object-cover"
 								onLoad={() => setImgLoading(false)}
 								onError={() => { setImgFailed(true); setImgLoading(false); }} />
-							<div className="absolute inset-0 bg-gradient-to-r from-black via-black/60 to-transparent" />
 						</>
 					) : (
 						<div className="absolute inset-0 flex items-center justify-center p-8">

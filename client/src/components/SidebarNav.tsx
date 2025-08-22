@@ -133,7 +133,7 @@ const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
 
 			{/* FOOTER — vertically centered, reduced vertical space */}
 			<footer className="flex-none px-0 p-0 m-0 mt-auto">
-				<button className="w-full h-14 md:h-16 flex items-center justify-center text-center p-0 m-0">
+				<button className="w-full h-14 w-7 md:h-16 flex items-center justify-center text-center p-0 m-0">
 					<Link to="/account" className="block text-white font-extrabold uppercase tracking-wide">
 						Account
 					</Link>

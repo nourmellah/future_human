@@ -17,10 +17,10 @@ const registerSchema = z.object({
   lastName: z.string().min(1, 'lastName is required'),
   email: z.string().email(),
   password: z.string().min(6),
-  phoneNumber: z.string().optional(),    // keep as string for country codes/leading zeros
+  phoneNumber: z.string().optional(),
   address: z.string().optional(),
-  codePostal: z.string().optional(),
-  pays: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -45,8 +45,8 @@ function mapUserRow(u) {
     userRole: u.user_role,
     phoneNumber: u.phone_number,
     address: u.address,
-    codePostal: u.code_postal,
-    pays: u.pays,
+    postalCode: u.postal_code,
+    country: u.country,
     createdAt: u.created_at,
     updatedAt: u.updated_at,
     fullName: [u.first_name, u.last_name].filter(Boolean).join(' ').trim(),
@@ -73,7 +73,7 @@ router.post('/register', async (req, res) => {
 
   const [result] = await db.execute(
     `INSERT INTO users
-     (first_name, last_name, email, password_hash, user_role, phone_number, address, code_postal, pays)
+     (first_name, last_name, email, password_hash, user_role, phone_number, address, postal_code, country)
      VALUES (?, ?, ?, ?, 'USER', ?, ?, ?, ?)`,
     [
       data.firstName,
@@ -82,8 +82,8 @@ router.post('/register', async (req, res) => {
       passwordHash,
       data.phoneNumber ?? null,
       data.address ?? null,
-      data.codePostal ?? null,
-      data.pays ?? null,
+      data.postalCode ?? null,
+      data.country ?? null,
     ]
   );
 
