@@ -104,7 +104,7 @@ const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
 				<div className="w-full h-full flex flex-col items-center justify-center gap-4">
 					<LogoMark src={"src/assets/logo.png"} size={96} />
 					<Link to="/create" className="flex items-center gap-3 text-white font-extrabold select-none" aria-label="Create Agent">
-						<span className="grid place-items-center w-10 h-10 rounded-full bg-white text-black text-2xl leading-none">+</span>
+						<span className="grid place-items-center w-8 h-8 rounded-full bg-white text-black text-2xl leading-none">+</span>
 						<span className="uppercase leading-[0.95] text-[20px] text-left">
 							CREATE<br />
 							AGENT
