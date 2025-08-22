@@ -16,6 +16,7 @@ const AgentCreateSchema = z.object({
   identity: z.object({
     name: nonEmpty,
     role: nonEmpty,
+    companyName: z.string().optional().nullable(),
     desc: z.string().optional().nullable(),
   }),
   appearance: z.object({
@@ -67,6 +68,7 @@ function rowToAgent(r) {
     identity: {
       name: r.identity_name,
       role: r.identity_role,
+      companyName: r.identity_company_name,
       desc: r.identity_desc,
     },
     appearance: {
@@ -106,6 +108,7 @@ function payloadToColumns(p) {
   if (p.identity) {
     if (p.identity.name !== undefined) cols.identity_name = p.identity.name;
     if (p.identity.role !== undefined) cols.identity_role = p.identity.role;
+    if (p.identity.companyName !== undefined) cols.identity_company_name = p.identity.companyName ?? null;
     if (p.identity.desc !== undefined) cols.identity_desc = p.identity.desc ?? null;
   }
   if (p.appearance) {
@@ -151,7 +154,7 @@ function buildUpdateSQL(cols) {
 const SELECT_BASE = `
   SELECT
     id, owner_id,
-    identity_name, identity_role, identity_desc,
+    identity_name, identity_role, identity_company_name, identity_desc,
     appearance_persona_id, appearance_bg_color,
     voice_language, voice_name,
     style_formality, style_pace, temp_calm, temp_introvert,
@@ -191,7 +194,7 @@ router.post('/', async (req, res) => {
   const [result] = await db.execute(
     `INSERT INTO agents (
       owner_id,
-      identity_name, identity_role, identity_desc,
+      identity_name, identity_role, identity_company_name, identity_desc,
       appearance_persona_id, appearance_bg_color,
       voice_language, voice_name,
       style_formality, style_pace, temp_calm, temp_introvert,
@@ -199,10 +202,10 @@ router.post('/', async (req, res) => {
       brain_id, brain_instructions,
       cards_background_id,
       draft_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       req.user.id,
-      cols.identity_name, cols.identity_role, cols.identity_desc ?? null,
+      cols.identity_name, cols.identity_role, cols.identity_company_name ?? null, cols.identity_desc ?? null,
       cols.appearance_persona_id ?? null, cols.appearance_bg_color ?? null,
       cols.voice_language, cols.voice_name,
       cols.style_formality, cols.style_pace, cols.temp_calm, cols.temp_introvert,

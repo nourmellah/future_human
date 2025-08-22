@@ -36,7 +36,7 @@ const DELETE_ = (p: string) => call("apiDelete", p);
 
 /* ---------------------- types & normalization ------------------------ */
 type AgentServerCreate = {
-  identity: { name: string; role: string; desc?: string | null };
+  identity: { name: string; role: string; companyName?: string | null; desc?: string | null };
   appearance?: { personaId?: string | null; bgColor?: string | null };
   voice: { language: string; name: string };
   style: {

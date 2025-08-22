@@ -29,7 +29,6 @@ async function doRefresh(): Promise<string | null> {
         credentials: 'include', // send httpOnly cookie
       });
       if (!r.ok) {
-        setAccessToken(null);
         return null;
       }
       const data = (await r.json()) as { accessToken?: string };

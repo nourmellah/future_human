@@ -5,10 +5,6 @@ const cookieParser = require('cookie-parser');
 const db = require('./db');
 const { PORT, NODE_ENV, CORS_ALLOWED_ORIGINS } = require('./config');
 
-const authRoutes = require('./routes/auth');
-const agentRoutes = require('./routes/agents');
-const accountRoutes = require('./routes/account');
-
 const app = express();
 // app.use(cors({ origin: true, credentials: true })); /** TEMPORARY !!!!! */
 
@@ -30,6 +26,10 @@ app.use(cookieParser());
 
 // If you deploy behind a proxy (e.g., Nginx/Heroku), uncomment:
 // app.set('trust proxy', 1);
+
+const authRoutes = require('./routes/auth');
+const agentRoutes = require('./routes/agents');
+const accountRoutes = require('./routes/account');
 
 /** Health endpoint (+ DB ping) */
 app.get('/api/health', async (_req, res) => {

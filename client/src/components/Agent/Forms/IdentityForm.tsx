@@ -4,6 +4,7 @@ import Field from "../../Form/Field";
 export type IdentityValues = {
   name: string;
   role: string;
+  companyName: string;
   description: string;
 };
 
@@ -60,6 +61,14 @@ export default function IdentityForm({ initial, onChange, onSubmit }: IdentityFo
           placeholder="e.g. Support, Sales, Tutor"
           value={initial.role}
           onChange={set("role")}
+          type="text" />
+
+        <Field
+          label="Company Name"
+          name="companyName"
+          placeholder="e.g. Acme Corp"
+          value={initial.companyName}
+          onChange={set("companyName")}
           type="text" />
 
         {/* Description */}

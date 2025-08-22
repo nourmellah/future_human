@@ -89,6 +89,7 @@ function RightPanel() {
     const identity = {
       name: a.identity?.name ?? "",
       role: a.identity?.role ?? "",
+      companyName: a.identity?.companyName ?? "",
       description: a.identity?.desc ?? "",
     };
 
