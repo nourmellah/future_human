@@ -26,7 +26,7 @@ export type FormProps<Payload> = {
 };
 
 // === Static config (assets + accent) ===
-const FACE_SRC = "src/assets/face.png";
+const FACE_SRC = "src/assets/face2.png";
 const LOGO_SRC = "src/assets/logo.png";
 const LOADER_GIF = "src/assets/loader.gif";
 const ACCENT = "#E7E31B";

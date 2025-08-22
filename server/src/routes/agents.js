@@ -155,7 +155,7 @@ const SELECT_BASE = `
     appearance_persona_id, appearance_bg_color,
     voice_language, voice_name,
     style_formality, style_pace, temp_calm, temp_introvert,
-    empathy, humor, creativity, directness,
+    pers_empathy, pers_humor, pers_creativity, pers_directness,
     brain_id, brain_instructions,
     cards_background_id,
     draft_id,
@@ -195,11 +195,11 @@ router.post('/', async (req, res) => {
       appearance_persona_id, appearance_bg_color,
       voice_language, voice_name,
       style_formality, style_pace, temp_calm, temp_introvert,
-      empathy, humor, creativity, directness,
+      pers_empathy, pers_humor, pers_creativity, pers_directness,
       brain_id, brain_instructions,
       cards_background_id,
       draft_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       req.user.id,
       cols.identity_name, cols.identity_role, cols.identity_desc ?? null,

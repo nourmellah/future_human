@@ -1,12 +1,14 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import LogoMark from "./LogoMark";
+import { useAgents } from "../AgentsProvider";
 
 export type Agent = {
-	id: string;
-	name: string;
-	role?: string;
-	thumbnail: string; // image url
+  id: number | string;
+  identity?: { name?: string; role?: string; desc?: string | null };
+  appearance?: { personaId?: string | null; bgColor?: string | null };
+  updatedAt?: string;
+  thumbnail?: string; // keep if your JSX references agent.thumbnail
 };
 
 export type SidebarNavProps = {
@@ -17,6 +19,20 @@ export type SidebarNavProps = {
 };
 
 const ACCENT = "#E7E31B";
+const FALLBACK_THUMB = "/assets/agent-placeholder.png"; // or your existing fallback
+
+const getAgentName = (a: Agent) =>
+  a?.identity?.name ?? `Agent #${a?.id ?? "?"}`;
+
+const getAgentRole = (a: Agent) =>
+  a?.identity?.role ?? "";
+
+const getAgentThumb = (a: Agent) =>
+  a?.thumbnail
+    ? a.thumbnail
+    : a?.appearance?.personaId
+    ? `/assets/personas/${a.appearance.personaId}.png`
+    : FALLBACK_THUMB;
 
 export const SidebarAgentCard: React.FC<{
   agent: Agent;
@@ -27,7 +43,7 @@ export const SidebarAgentCard: React.FC<{
     <button
       onClick={() => onClick?.(agent)}
       className="w-full text-left focus:outline-none group"
-      aria-label={`Open ${agent.name}`}
+      aria-label={`Open ${getAgentName(agent)}`}
     >
       <div
         className={`
@@ -40,8 +56,8 @@ export const SidebarAgentCard: React.FC<{
       >
         {/* image */}
         <img
-          src={agent.thumbnail}
-          alt={agent.name}
+          src={getAgentThumb(agent)}
+          alt={getAgentName(agent)}
           className="absolute inset-0 h-full w-full object-cover"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
@@ -49,9 +65,9 @@ export const SidebarAgentCard: React.FC<{
         {/* FULL-WIDTH BOTTOM BAR — not floating */}
         <div className="absolute inset-x-0 bottom-0">
           <div className="bg-[#232327]/95 text-white text-center px-4 py-2">
-            <div className="text-base font-extrabold leading-tight truncate">{agent.name}</div>
+            <div className="text-base font-extrabold leading-tight truncate">{getAgentName(agent)}</div>
             <div className="text-[11px] uppercase tracking-widest leading-tight opacity-90 truncate">
-              {agent.role || " "}
+              {getAgentRole(agent) || " "}
             </div>
           </div>
         </div>
@@ -62,13 +78,13 @@ export const SidebarAgentCard: React.FC<{
 
 
 const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
-	agents = [],
 	activeAgentId,
 	className = "",
 	renderAgent,
 	children,
 }) => {
-	const navigate = useNavigate()
+	const navigate = useNavigate();
+	const { agents, loading, refresh } = useAgents();
 
 	const onAgentClick = (agent: Agent) => {
 		navigate(`/agents/${agent.id}`);

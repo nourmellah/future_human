@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 import React from "react";
 import { updateAccount } from "../services/account";
 
-const CENTER_IMG = "src/assets/face.png";
+const CENTER_IMG = "src/assets/face1.png";
 
 export type AccountData = {
   firstName: string;

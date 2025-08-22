@@ -1,4 +1,6 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
+import { createAgentFromWizard, patchAgent, upsertConnections } from "../services/agents";
 
 /* ---------- Step order ---------- */
 export const STEPS = [
@@ -20,18 +22,19 @@ export type VoiceSoulData = {
   tempCalm: number; tempIntrovert: number;
   empathy: number; humor: number; creativity: number; directness: number;
 };
-export type BrainData = { brainId: string; instructions: string };
+export type BrainData = { id: string; instructions: string };
 export type CardsData = { backgroundId: string | null };
 export type Connection = {
   id: string; providerId: string;
   status: "connected" | "needs_setup" | "error";
-  config?: Record<string,string>;
+  config?: Record<string, string>;
   token?: string;
 };
 export type ConnectionsData = { items: Connection[] };
 
 /* ---------- Full state ---------- */
 export type WizardState = {
+  agentId: string | null;
   current: StepId;
   identity: IdentityData;
   appearance: AppearanceData;
@@ -45,16 +48,17 @@ export type WizardState = {
 
 /* ---------- Defaults ---------- */
 export const defaultState: WizardState = {
+  agentId: null,
   current: "identity",
   identity: { name: "", role: "", description: "" },
-appearance: { personaId: null, bgColor: "#2a2a2a" },
+  appearance: { personaId: null, bgColor: "#2a2a2a" },
   voiceSoul: {
     language: "en", voice: "alex",
     styleFormality: 5, stylePace: 5,
     tempCalm: 5, tempIntrovert: 5,
     empathy: 5, humor: 5, creativity: 5, directness: 5,
   },
-  brain: { brainId: "level1", instructions: "" },
+  brain: { id: "level1", instructions: "" },
   cards: { backgroundId: null },
   connections: { items: [] },
   updatedAt: Date.now(),
@@ -114,7 +118,7 @@ function loadFromLocal(): Partial<WizardState> | null {
 function saveToLocal(state: WizardState) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
-  } catch {}
+  } catch { }
 }
 
 /* ---------- Context ---------- */
@@ -135,6 +139,8 @@ export function AgentWizardProvider({ children }: { children: React.ReactNode })
   const [state, dispatch] = React.useReducer(reducer, defaultState);
   const hydratedRef = React.useRef(false);
   const [isHydrated, setIsHydrated] = React.useState(false);
+
+  const navigate = useNavigate();
 
   // Hydrate ONCE from localStorage on mount.
   React.useEffect(() => {
@@ -186,10 +192,44 @@ export function AgentWizardProvider({ children }: { children: React.ReactNode })
     dispatch({ type: "SET_DRAFT_ID", id: state.draftId ?? "local" });
   }, [state]);
 
+  // keep it exactly as a useCallback
+  // Make sure you have these imported:
+  // import { createAgentFromWizard, patchAgent, upsertConnections } from "../services/agents";
+
   const submit = React.useCallback(async () => {
-    // TODO: replace with POST to your Spring Boot API
-    console.log("SUBMIT agent:", state);
-  }, [state]);
+    try {
+      const existingAgentId =
+        state.agentId ?? null;
+
+      let agentId: number | string | undefined;
+
+      if (existingAgentId) {
+        // Update agent using wizard-shaped state; service will normalize
+        const res = await patchAgent(existingAgentId, state);
+        agentId = (res as any)?.agent?.id ?? existingAgentId;
+
+        // Upsert connections separately on update
+        const items = state.connections?.items ?? [];
+        if (Array.isArray(items) && items.length) {
+          await upsertConnections(agentId!, items);
+        }
+      } else {
+        // Create agent and (optionally) upsert connections in one go
+        const res = await createAgentFromWizard(state, {
+          upsertConnections: state.connections?.items ?? [],
+        });
+        agentId = (res as any)?.agent?.id ?? (res as any)?.id;
+      }
+
+      if (!agentId) throw new Error("No agent id returned");
+
+      navigate(`/agents/${agentId}`, { replace: true });
+    } catch (err) {
+      console.error("Agent submit failed:", err);
+      // TODO: toast/error UI if desired
+    }
+  }, [state, navigate]);
+
 
   const value = React.useMemo<Ctx>(() => ({
     state,

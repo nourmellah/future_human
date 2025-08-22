@@ -1,14 +1,15 @@
 // src/pages/CreateAgentPage.tsx
 import ThreePaneLayout from "../layouts/ThreePaneLayout";         // adjust path if needed
 import SidebarNav from "../components/SidebarNav";                 // left app sidebar
-import IdentityForm from "../components/Create/Forms/IdentityForm"; // form component
-import { AgentWizardProvider, useAgentWizard } from "../state/agentWizard";
-import CenterStage from "../components/Create/CenterStage";
-import PersonaForm from "../components/Create/Forms/PersonaForm";
-import VoiceSoulForm from "../components/Create/Forms/VoiceSoulForm";
-import BrainForm from "../components/Create/Forms/BrainForm";
-import ConnectionsForm from "../components/Create/Forms/ConnectionsForm";
-import BackgroundCardsForm from "../components/Create/Forms/BackgroundCardsForm";
+import IdentityForm from "../components/Agent/Forms/IdentityForm"; // form component
+import { AgentWizardProvider, useAgentWizard, type ConnectionsData, type IdentityData, type WizardState } from "../state/agentWizard";
+import CenterStage from "../components/Agent/CenterStage";
+import PersonaForm from "../components/Agent/Forms/PersonaForm";
+import VoiceSoulForm from "../components/Agent/Forms/VoiceSoulForm";
+import BrainForm from "../components/Agent/Forms/BrainForm";
+import ConnectionsForm from "../components/Agent/Forms/ConnectionsForm";
+import BackgroundCardsForm from "../components/Agent/Forms/BackgroundCardsForm";
+import * as React from "react";
 
 // Icons
 import {
@@ -21,6 +22,9 @@ import {
   Eye,
   Brain,
 } from "lucide-react";
+import { useParams } from "react-router-dom";
+import { getAgent, listConnections } from "../services/agents";
+import type { Agent } from "../AgentsProvider";
 const ACCENT = "#E7E31B";
 const DONE = "#22c55e";
 
@@ -68,9 +72,79 @@ function StepFooter({
 
 function RightPanel() {
   const { state, save, next, back, saveDraft, submit, goto } = useAgentWizard();
+  const [agent, setAgent] = React.useState<WizardState | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   const active: StepKey = state.current as StepKey;
   const activeIndex = STEPS.findIndex((s) => s.key === active);
+
+  const { id } = useParams<{ id?: string }>();
+  if (id) {
+  getAgent(id).then(async (data) => {
+    const a = data.agent;
+
+    const agentId = String(a.id);
+    const current = "identity";
+
+    const identity = {
+      name: a.identity?.name ?? "",
+      role: a.identity?.role ?? "",
+      description: a.identity?.desc ?? "",
+    };
+
+    const appearance = {
+      personaId: a.appearance?.personaId ?? null,
+      bgColor: a.appearance?.bgColor ?? "#2a2a2a",
+    };
+
+    const voiceSoul = {
+      language: a.voice?.language ?? "",
+      voice: a.voice?.name ?? "",
+      styleFormality: a.style?.formality ?? 0,
+      stylePace: a.style?.pace ?? 0,
+      tempCalm: a.style?.calm ?? 0,
+      tempIntrovert: a.style?.introvert ?? 0,
+      empathy: a.style?.empathy ?? 0,
+      humor: a.style?.humor ?? 0,
+      creativity: a.style?.creativity ?? 0,
+      directness: a.style?.directness ?? 0,
+    };
+
+    const brain = {
+      id: a.brain?.id ?? "",
+      instructions: a.brain?.instructions ?? "",
+    };
+
+    const cards = {
+      backgroundId: a.cards?.backgroundId ?? null,
+    };
+
+    const fetchedConnections = await listConnections(agentId);
+    const connections: ConnectionsData = {
+      // normalize the result: listConnections might return an array or an object like { connections: [] }
+      items: Array.isArray(fetchedConnections)
+        ? fetchedConnections
+        : (fetchedConnections.connections ?? []),
+    };
+
+    const draftId = a.draftId ?? undefined;
+
+    setAgent({
+      agentId,
+      current,
+      identity,
+      appearance,
+      voiceSoul,
+      brain,
+      cards,
+      connections,
+      draftId,
+      updatedAt: Date.now(),
+    });
+  });
+}
+
+
 
   return (
     <div className="text-white">
@@ -190,7 +264,7 @@ function RightPanel() {
 /* ---------------------------
  * Page
  * --------------------------- */
-export default function CreateAgentPage() {
+export default function AgentPage() {
   // Example agents for the left app sidebar
   const agents = [
     { id: "1", name: "FDS", role: "FGDF", thumbnail: "/assets/avatars/1.jpg" },

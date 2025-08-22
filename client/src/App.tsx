@@ -3,9 +3,10 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoadingOverlay from "./components/LoadingOverlay";
 import Account from "./pages/Account";
-import CreateAgentPage from "./pages/CreateAgentPage";
+import AgentPage from "./pages/AgentPage";
 import { AuthProvider } from "./auth/AuthProvider";
 import Protected from "./auth/Protected";
+import { AgentsProvider } from "./AgentsProvider";
 
 // Lazy-load pages (adjust paths to your project)
 const AuthScreens = lazy(() => import("./pages/Auth"));
@@ -25,36 +26,43 @@ const Dashboard = () => (
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Suspense
-          fallback={
-            <LoadingOverlay />
-          }
-        >
-          <Routes>
-            <Route path="/" element={
-              <Protected>
-                <Navigate to="/create" replace />
-              </Protected>
-            } />
-            <Route path="/auth" element={<AuthScreens defaultMode="login" />} />
-            <Route path="/account" element={
-              <Protected>
-                <Account />
-              </Protected>
-            } />
-            <Route path="/create" element={
-              <Protected>
-                <CreateAgentPage />
-              </Protected>
-            } />
+      <AgentsProvider>
+        <BrowserRouter>
+          <Suspense
+            fallback={
+              <LoadingOverlay />
+            }
+          >
+            <Routes>
+              <Route path="/" element={
+                <Protected>
+                  <Navigate to="/create" replace />
+                </Protected>
+              } />
+              <Route path="/auth" element={<AuthScreens defaultMode="login" />} />
+              <Route path="/account" element={
+                <Protected>
+                  <Account />
+                </Protected>
+              } />
+              <Route path="/create" element={
+                <Protected>
+                  <AgentPage />
+                </Protected>
+              } />
+              <Route path="/agents/:agentId" element={
+                <Protected>
+                  <AgentPage />
+                </Protected>
+              } />
 
-            <Route path="/dashboard" element={<Dashboard />} />
-            {/* catch-all → auth */}
-            <Route path="*" element={<Navigate to="/auth" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+              <Route path="/dashboard" element={<Dashboard />} />
+              {/* catch-all → auth */}
+              <Route path="*" element={<Navigate to="/auth" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </AgentsProvider>
     </AuthProvider>
   );
 }
