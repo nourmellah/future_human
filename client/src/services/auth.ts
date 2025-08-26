@@ -1,13 +1,19 @@
-import { apiGet, apiPost } from '../lib/api';
+// Auth service (stateless JWT). Matches server routes:
+// POST /api/auth/register -> { user, accessToken }
+// POST /api/auth/login    -> { user, accessToken }
+// GET  /api/auth/me       -> { user | null }
+// POST /api/auth/logout   -> { ok: true }
 
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
+import { apiGet, apiPost } from "../lib/api";
+
+/* ----------------------------- Types ----------------------------- */
 
 export type User = {
-  id: number;
-  firstName: string | null;
-  lastName: string | null;
+  id: number | string;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string;
-  userRole: UserRole;
+  userRole?: "SUPER_ADMIN" | "ADMIN" | "USER";
   phoneNumber?: string | null;
   address?: string | null;
   postalCode?: string | null;
@@ -17,8 +23,7 @@ export type User = {
   fullName?: string;
 };
 
-export type LoginInput = { email: string; password: string };
-export type RegisterInput = { 
+export type RegisterPayload = {
   firstName: string;
   lastName: string;
   email: string;
@@ -29,26 +34,38 @@ export type RegisterInput = {
   country?: string;
 };
 
-export async function login(input: LoginInput): Promise<{ user: User; accessToken: string }> {
-  return apiPost('/auth/login', input);
+export type LoginPayload = {
+  email: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  user: User;
+  accessToken: string;
+};
+
+export type MeResponse = {
+  user: User | null;
+};
+
+/* ---------------------------- API calls --------------------------- */
+
+export async function register(payload: RegisterPayload): Promise<AuthResponse> {
+  // server validates with zod; returns { user, accessToken }
+  return apiPost<AuthResponse>("/auth/register", payload);
 }
 
-export async function register(
-  input: RegisterInput
-): Promise<{ user: User; accessToken: string }> {
-  return apiPost('/auth/register', input);
+export async function login(payload: LoginPayload): Promise<AuthResponse> {
+  // returns { user, accessToken }
+  return apiPost<AuthResponse>("/auth/login", payload);
+}
+
+export async function me(): Promise<MeResponse> {
+  // relies on Bearer token set by api.ts via AuthProvider getter
+  return apiGet<MeResponse>("/auth/me");
 }
 
 export async function logout(): Promise<{ ok: true }> {
-  return apiPost('/auth/logout');
-}
-
-/** Session check using httpOnly refresh cookie. */
-export async function me(): Promise<{ user: User | null }> {
-  return apiGet('/auth/me');
-}
-
-/** Manually trigger a refresh (usually auto via api wrapper). */
-export async function refresh(): Promise<{ accessToken?: string }> {
-  return apiPost('/auth/refresh');
+  // stateless JWT: this is just for UX symmetry
+  return apiPost<{ ok: true }>("/auth/logout", {});
 }

@@ -1,137 +1,183 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
-import { setCurrentUser } from "../session";
-import type { User } from '../services/auth';
-import { login as apiLogin, register as apiRegister, logout as apiLogout, me, refresh } from '../services/auth';
-import { setAccessTokenGetter, setAccessTokenHandler } from '../lib/api';
+import React from "react";
+import type { ReactNode } from "react";
+import {
+  login as apiLogin,
+  register as apiRegister,
+  logout as apiLogout,
+  me as apiMe,
+  type AuthResponse,
+  type LoginPayload,
+  type RegisterPayload,
+  type User,
+} from "../services/auth";
+import {
+  setAccessTokenGetter,
+  setAccessTokenHandler,
+} from "../lib/api";
+
+/* ------------------------------------------------------------------ */
+/* Storage keys                                                        */
+/* ------------------------------------------------------------------ */
+
+const ACCESS_TOKEN_KEY = "fh.accessToken";
+
+/* ------------------------------------------------------------------ */
+/* Context types                                                       */
+/* ------------------------------------------------------------------ */
 
 type AuthContextShape = {
+  isLoading: boolean;
   user: User | null;
   accessToken: string | null;
-  loading: boolean;
 
-  login: (email: string, password: string) => Promise<void>;
-  register: (payload: Record<string, unknown>) => Promise<void>;
+  login: (payload: LoginPayload) => Promise<User>;
+  register: (payload: RegisterPayload) => Promise<User>;
   logout: () => Promise<void>;
-  refresh: () => Promise<void>;
 
-  // Back-compat shim so older code paths won’t crash
-  loginWithTokens: (payload: { user: User; accessToken: string }) => void;
+  /** Refetch user from /auth/me (e.g., after profile edits) */
+  refreshUser: () => Promise<User | null>;
+
+  /** Manually set current user (client-side updates) */
+  setUser: (u: User | null) => void;
 };
 
-const AuthContext = createContext<AuthContextShape | undefined>(undefined);
+const AuthContext = React.createContext<AuthContextShape | undefined>(undefined);
 
-export function useAuth(): AuthContextShape {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
-}
+/* ------------------------------------------------------------------ */
+/* Provider                                                            */
+/* ------------------------------------------------------------------ */
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [user, setUser] = React.useState<User | null>(null);
+  const [accessToken, _setAccessToken] = React.useState<string | null>(null);
 
-  // keep the latest token in a ref so the API getter is always fresh
-  const tokenRef = useRef<string | null>(null);
-  tokenRef.current = accessToken;
+  // Keep api.ts aware of the current token (reads latest value via getter)
+  React.useEffect(() => {
+    setAccessTokenGetter(() => accessToken);
+    // Optional: expose a handler if some external flow needs to inject a token.
+    setAccessTokenHandler((tok) => {
+      setToken(tok);
+    });
+  }, [accessToken]);
 
-  // Wire the API wrapper (if you use it) so requests always read the latest token
-  useEffect(() => {
-    try {
-      setAccessTokenGetter?.(() => tokenRef.current ?? null);
-      // Let the API wrapper push new tokens back to us after a refresh
-      setAccessTokenHandler?.((nextToken: string | null | undefined) => {
-        setAccessToken(nextToken ?? null);
-      });
-    } catch {
-      // If your wrapper doesn't export these, ignore silently
+  // Boot: load token from localStorage, then fetch /auth/me
+  React.useEffect(() => {
+    const stored = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (stored && typeof stored === "string") {
+      _setAccessToken(stored);
+      // We'll immediately validate and pull the user
+      void (async () => {
+        try {
+          const { user } = await apiMe();
+          setUser(user ?? null);
+        } catch {
+          // Token invalid/expired
+          clearToken();
+          setUser(null);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    } else {
+      setIsLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const initSession = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1) ask who I am (httpOnly session via cookie)
-      const meRes = await me(); // { user: User | null }
-      setUser(meRes.user ?? null);
-      setCurrentUser(meRes.user ?? null);
+  function persistToken(tok: string | null) {
+    if (tok) {
+      localStorage.setItem(ACCESS_TOKEN_KEY, tok);
+    } else {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+    }
+  }
 
-      // 2) try to obtain an access token (if your backend issues one)
-      const r = await refresh(); // { accessToken?: string }
-      if (r?.accessToken) setAccessToken(r.accessToken ?? null);
-    } catch {
+  function setToken(tok: string | null) {
+    persistToken(tok);
+    _setAccessToken(tok);
+  }
+
+  function clearToken() {
+    persistToken(null);
+    _setAccessToken(null);
+  }
+
+  async function handleAuthResponse(res: AuthResponse): Promise<User> {
+    setToken(res.accessToken);
+    setUser(res.user);
+    return res.user;
+  }
+
+  async function login(payload: LoginPayload): Promise<User> {
+    try {
+      const res = await apiLogin(payload);
+      return await handleAuthResponse(res);
+    } catch (e: any) {
+      // Defensive: clear any bad token and user on failure
+      clearToken();
       setUser(null);
-      setAccessToken(null);
-    } finally {
-      setLoading(false);
+      throw e;
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    void initSession();
-  }, [initSession]);
+  async function register(payload: RegisterPayload): Promise<User> {
+    try {
+      const res = await apiRegister(payload);
+      return await handleAuthResponse(res);
+    } catch (e: any) {
+      clearToken();
+      setUser(null);
+      throw e;
+    }
+  }
 
-  const login = useCallback(async (email: string, password: string) => {
-    // auth.ts contract: { user, accessToken }
-    const { user: u, accessToken: at } = await apiLogin({ email, password });
-    setUser(u);
-    setCurrentUser(u);
-    setAccessToken(at ?? null);
-  }, []);
-
-  const register = useCallback(async (payload: Record<string, unknown>) => {
-    // auth.ts contract: { user, accessToken }
-    const { user: u, accessToken: at } = await apiRegister(payload as any);
-    setUser(u);
-    setCurrentUser(u);
-    setAccessToken(at ?? null);
-  }, []);
-
-  const doLogout = useCallback(async () => {
+  async function logout(): Promise<void> {
     try {
       await apiLogout();
+    } catch {
+      // ignore network/server errors on logout (stateless)
     } finally {
+      clearToken();
       setUser(null);
-      setCurrentUser(null);
-      setAccessToken(null);
     }
-  }, []);
+  }
 
-  const doRefresh = useCallback(async () => {
-    const r = await refresh();
-    if (r?.accessToken) setAccessToken(r.accessToken ?? null);
-  }, []);
+  async function refreshUser(): Promise<User | null> {
+    try {
+      const { user } = await apiMe();
+      setUser(user ?? null);
+      return user ?? null;
+    } catch (e: any) {
+      // 401/expired → sign out locally
+      clearToken();
+      setUser(null);
+      return null;
+    }
+  }
 
-  // Back-compat for old callers that were doing manual token injection
-  const loginWithTokens = useCallback((payload: { user: User; accessToken: string }) => {
-    setUser(payload.user);
-    setAccessToken(payload.accessToken ?? null);
-  }, []);
+  const value: AuthContextShape = {
+    isLoading,
+    user,
+    accessToken,
 
-  useEffect(() => { setCurrentUser(user); }, [user]);
+    login,
+    register,
+    logout,
 
-  const value = useMemo<AuthContextShape>(
-    () => ({
-      user,
-      accessToken,
-      loading,
-      login,
-      register,
-      logout: doLogout,
-      refresh: doRefresh,
-      loginWithTokens,
-    }),
-    [user, accessToken, loading, login, register, doLogout, doRefresh, loginWithTokens]
-  );
+    refreshUser,
+    setUser,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hook                                                                */
+/* ------------------------------------------------------------------ */
+
+export function useAuth(): AuthContextShape {
+  const ctx = React.useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
+  return ctx;
 }

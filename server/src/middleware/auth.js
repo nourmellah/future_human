@@ -1,52 +1,57 @@
-const { verifyAccessToken } = require('../utils/tokens');
+// Stateless auth middleware: validates a Bearer JWT and populates req.user.
+// Use `auth` when a route requires login, and `optionalAuth` when it's nice-to-have.
+
+const { parseAuthHeader, verifyAccessToken } = require('../utils/tokens');
 
 /**
- * Extract Bearer token from Authorization header.
- */
-function getBearer(req) {
-	const auth = req.headers.authorization || '';
-	const [type, token] = auth.split(' ');
-	if (type?.toLowerCase() === 'bearer' && token) return token;
-	return null;
-}
-
-/**
- * Auth middleware:
- *  - Verifies JWT access token
- *  - Attaches req.user = { id, email, role, iat, exp }
+ * Require a valid access token. 401 on failure.
  */
 function auth(req, res, next) {
-	const token = getBearer(req);
-	if (!token) {
-		return res.status(401).json({ error: 'missing_token', message: 'Authorization Bearer token required' });
-	}
-	const payload = verifyAccessToken(token);
-	if (!payload) {
-		return res.status(401).json({ error: 'invalid_token', message: 'Access token is invalid or expired' });
-	}
-	req.user = {
-		id: payload.sub,
-		email: payload.email,
-		role: payload.role || 'USER',
-		iat: payload.iat,
-		exp: payload.exp,
-	};
-	next();
+  try {
+    const token = parseAuthHeader(req);
+    if (!token) {
+      return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Missing Bearer token',
+      });
+    }
+
+    const payload = verifyAccessToken(token);
+    req.user = normalizeUser(payload);
+    return next();
+  } catch (err) {
+    return res.status(401).json({
+      error: 'unauthorized',
+      message: 'Invalid or expired token',
+    });
+  }
 }
 
 /**
- * Role guard:
- *  usage: app.get('/admin', auth, requireRole('ADMIN','SUPER_ADMIN'), handler)
+ * Try to read a token, but don’t fail if it’s missing/invalid.
+ * Useful for public endpoints that can personalize if logged in.
  */
-function requireRole(...allowed) {
-	const set = new Set(allowed);
-	return (req, res, next) => {
-		const role = req.user?.role;
-		if (!role || !set.has(role)) {
-			return res.status(403).json({ error: 'forbidden', message: 'Insufficient role' });
-		}
-		next();
-	};
+function optionalAuth(req, _res, next) {
+  try {
+    const token = parseAuthHeader(req);
+    if (!token) return next();
+    const payload = verifyAccessToken(token);
+    req.user = normalizeUser(payload);
+  } catch (_e) {
+    // ignore
+  }
+  return next();
 }
 
-module.exports = { auth, requireRole };
+/** Ensure consistent shape on req.user */
+function normalizeUser(p) {
+  return {
+    id: Number(p.id ?? p.sub ?? 0) || String(p.id ?? p.sub),
+    email: p.email || null,
+    userRole: p.userRole || 'USER',
+    firstName: p.firstName || null,
+    lastName: p.lastName || null,
+  };
+}
+
+module.exports = { auth, optionalAuth };

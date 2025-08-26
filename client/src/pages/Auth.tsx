@@ -238,7 +238,7 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 	// Login submit handler
 	const loginHandler = async (values: { email: string; password: string }) => {
 		try {
-			await login(values.email.trim(), values.password);
+			await login({ email: values.email.trim(), password: values.password });
 			// Success: AuthProvider sets user/token; your route guards/effects can redirect.
 			if (onLogin) await onLogin({ email: values.email, password: values.password });
 			navigate("/create"); // Redirect after login
@@ -254,8 +254,8 @@ export default function AuthScreens({ defaultMode = "login", onLogin, onRegister
 	const registerHandler = async (values: { firstName: string; lastName: string; email: string; password: string }) => {
 		try {
 			await register({
-				firstName: values.firstName?.trim() || undefined,
-				lastName: values.lastName?.trim() || undefined,
+				firstName: values.firstName?.trim() || "",
+				lastName: values.lastName?.trim() || "",
 				email: values.email.trim(),
 				password: values.password,
 			});

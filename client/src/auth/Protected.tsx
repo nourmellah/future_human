@@ -1,40 +1,45 @@
-// src/Protected.tsx
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from './AuthProvider';
+import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "./AuthProvider";
 
-type ProtectedProps = {
+type Props = {
+  /** Protected content (e.g., a page component) */
   children: React.ReactNode;
-  // When true, only unauthenticated users can view (e.g., login/register pages)
-  guestOnly?: boolean;
-  // Where to send unauthenticated users (for protected routes)
-  to?: string; // default '/auth'
-  // Where to send authenticated users (for guest-only routes)
-  toWhenAuthed?: string; // default '/account'
-  // Optional UI while auth is initializing
-  fallback?: React.ReactNode;
+  /** Optional: restrict access to specific roles */
+  roles?: Array<"SUPER_ADMIN" | "ADMIN" | "USER">;
+  /** Optional: route to send unauthorized users */
+  redirectTo?: string;
 };
 
 export default function Protected({
   children,
-  guestOnly = false,
-  to = '/auth',
-  toWhenAuthed = '/account',
-  fallback = null,
-}: ProtectedProps) {
-  const { user, loading } = useAuth();
+  roles,
+  redirectTo = "/auth",
+}: Props) {
+  const { isLoading, user } = useAuth();
   const location = useLocation();
 
-  if (loading) return <>{fallback}</>;
-
-  if (guestOnly) {
-    // For login/register screens: only redirect if the user is already signed in
-    if (user) return <Navigate to={toWhenAuthed} replace />;
-    return <>{children}</>;
+  // Hold rendering until we know auth state
+  if (isLoading) {
+    return (
+      <div className="w-full h-[50vh] grid place-items-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
   }
 
-  // For protected screens: if not signed in, send to auth and keep "from" for post-login redirect
-  if (!user) return <Navigate to={to} state={{ from: location }} replace />;
+  // Not logged in → go to auth, preserve where we came from
+  if (!user) {
+    return <Navigate to={redirectTo} state={{ from: location }} replace />;
+  }
+
+  // Role-gated access (optional)
+  if (roles && roles.length > 0) {
+    const ok = roles.includes((user.userRole as any) || "USER");
+    if (!ok) {
+      return <Navigate to="/unauthorized" replace />;
+    }
+  }
 
   return <>{children}</>;
 }

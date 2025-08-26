@@ -3,22 +3,37 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
 const db = require('./db');
-const { PORT, NODE_ENV, CORS_ALLOWED_ORIGINS } = require('./config');
+const {
+  PORT,
+  NODE_ENV,
+  // New config shape (comma-separated list supported):
+  CORS_ORIGIN,
+  CORS_CREDENTIALS,
+  // Back-compat with your previous config:
+  CORS_ALLOWED_ORIGINS,
+} = require('./config');
 
 const app = express();
-// app.use(cors({ origin: true, credentials: true })); /** TEMPORARY !!!!! */
 
-/** CORS: allow your client origins + credentials (cookies) */
+// Build an allowlist from either CORS_ALLOWED_ORIGINS (array) or CORS_ORIGIN (csv string)
+const allowlist = Array.isArray(CORS_ALLOWED_ORIGINS)
+  ? CORS_ALLOWED_ORIGINS
+  : (typeof CORS_ORIGIN === 'string'
+      ? CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+      : []);
+
+/** CORS: allow your client origins + credentials (cookies allowed but not required) */
 const corsOptions = {
   origin(origin, cb) {
     // Allow tools (curl/postman) with no Origin
     if (!origin) return cb(null, true);
-    // Allow any of the whitelisted dev origins
-    if (CORS_ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // If no allowlist configured, allow all (dev-friendly); otherwise check list
+    if (allowlist.length === 0 || allowlist.includes(origin)) return cb(null, true);
     return cb(new Error(`Not allowed by CORS: ${origin}`));
   },
-  credentials: true,
+  credentials: typeof CORS_CREDENTIALS === 'boolean' ? CORS_CREDENTIALS : true,
 };
+
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
@@ -38,6 +53,7 @@ app.get('/api/health', async (_req, res) => {
     ok: true,
     env: NODE_ENV,
     db: dbStatus,
+    ts: new Date().toISOString(),
   });
 });
 

@@ -2,16 +2,12 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const db = require('../db');
-const {
-  signAccessToken,
-  issueRefreshToken,
-  rotateRefreshToken,
-  REFRESH_COOKIE_NAME,
-} = require('../utils/tokens');
-const { NODE_ENV, REFRESH_TOKEN_TTL_DAYS } = require('../config');
+const { signAccessToken } = require('../utils/tokens');
+const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
+/* ------------------------ Schemas ------------------------ */
 const registerSchema = z.object({
   firstName: z.string().min(1, 'firstName is required'),
   lastName: z.string().min(1, 'lastName is required'),
@@ -28,14 +24,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-const cookieOpts = {
-  httpOnly: true,
-  sameSite: 'lax',
-  secure: NODE_ENV === 'production',
-  path: '/api/auth',
-  maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000, // ms
-};
-
+/* ------------------------ Helpers ------------------------ */
 function mapUserRow(u) {
   return {
     id: u.id,
@@ -53,8 +42,11 @@ function mapUserRow(u) {
   };
 }
 
+/* ------------------------ Routes ------------------------ */
+
 /**
  * POST /api/auth/register
+ * Creates a user and returns a signed access token (no cookies, no refresh).
  */
 router.post('/register', async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
@@ -65,9 +57,11 @@ router.post('/register', async (req, res) => {
   const data = parsed.data;
   const email = data.email.toLowerCase().trim();
 
-  // email uniqueness
+  // Uniqueness
   const [exists] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
-  if (exists.length) return res.status(409).json({ error: 'email_exists' });
+  if (exists.length) {
+    return res.status(409).json({ error: 'email_exists' });
+  }
 
   const passwordHash = await bcrypt.hash(data.password, 10);
 
@@ -92,14 +86,12 @@ router.post('/register', async (req, res) => {
   const user = mapUserRow(rows[0]);
 
   const accessToken = signAccessToken(user);
-  const { token: refreshToken } = await issueRefreshToken(user.id);
-
-  res.cookie(REFRESH_COOKIE_NAME, refreshToken, cookieOpts);
   return res.status(201).json({ user, accessToken });
 });
 
 /**
  * POST /api/auth/login
+ * Verifies credentials and returns a signed access token (no cookies, no refresh).
  */
 router.post('/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
@@ -112,6 +104,7 @@ router.post('/login', async (req, res) => {
     'SELECT * FROM users WHERE email = ? LIMIT 1',
     [email.toLowerCase().trim()]
   );
+
   if (!rows.length) return res.status(401).json({ error: 'invalid_credentials' });
 
   const u = rows[0];
@@ -120,64 +113,30 @@ router.post('/login', async (req, res) => {
 
   const user = mapUserRow(u);
   const accessToken = signAccessToken(user);
-  const { token: refreshToken } = await issueRefreshToken(user.id);
-
-  res.cookie(REFRESH_COOKIE_NAME, refreshToken, cookieOpts);
   return res.json({ user, accessToken });
 });
 
 /**
- * POST /api/auth/refresh
- * Rotates refresh token cookie and returns a fresh access token.
+ * GET /api/auth/me
+ * Uses Bearer token (via auth middleware) to return the latest user record.
  */
-router.post('/refresh', async (req, res) => {
-  const old = req.cookies?.[REFRESH_COOKIE_NAME];
-  if (!old) return res.status(401).json({ error: 'missing_refresh' });
+router.get('/me', auth, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.json({ user: null });
 
-  const rotated = await rotateRefreshToken(old);
-  if (!rotated) return res.status(401).json({ error: 'invalid_refresh' });
+  const [rows] = await db.execute('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!rows.length) return res.json({ user: null });
 
-  const [rows] = await db.execute('SELECT * FROM users WHERE id = ? LIMIT 1', [rotated.userId]);
-  if (!rows.length) return res.status(401).json({ error: 'user_not_found' });
-
-  const user = mapUserRow(rows[0]);
-  const accessToken = signAccessToken(user);
-
-  res.cookie(REFRESH_COOKIE_NAME, rotated.token, cookieOpts);
-  return res.json({ accessToken });
+  return res.json({ user: mapUserRow(rows[0]) });
 });
 
 /**
  * POST /api/auth/logout
- * Clears cookie and deletes stored refresh token.
+ * Stateless JWTs can't be "logged out" server-side without a blocklist.
+ * This endpoint exists for client UX; just return ok.
  */
-router.post('/logout', async (req, res) => {
-  const rt = req.cookies?.[REFRESH_COOKIE_NAME];
-  if (rt) {
-    await db.execute('DELETE FROM refresh_tokens WHERE token = ?', [rt]);
-  }
-  res.clearCookie(REFRESH_COOKIE_NAME, cookieOpts);
+router.post('/logout', async (_req, res) => {
   return res.json({ ok: true });
-});
-
-/**
- * GET /api/auth/me
- * If a valid refresh token cookie exists and is not expired, return user (lightweight session).
- */
-router.get('/me', async (req, res) => {
-  const rt = req.cookies?.[REFRESH_COOKIE_NAME];
-  if (!rt) return res.json({ user: null });
-
-  const [rows] = await db.execute(
-    `SELECT u.* FROM refresh_tokens r
-     JOIN users u ON u.id = r.user_id
-     WHERE r.token = ? AND r.expires_at > NOW()
-     LIMIT 1`,
-    [rt]
-  );
-
-  if (!rows.length) return res.json({ user: null });
-  return res.json({ user: mapUserRow(rows[0]) });
 });
 
 module.exports = router;
