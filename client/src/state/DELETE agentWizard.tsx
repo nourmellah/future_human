@@ -202,7 +202,7 @@ export function AgentWizardProvider({ children }: { children: React.ReactNode })
         state.agentId ?? null;
 
       let agentId: number | string | undefined;
-
+ 
       if (existingAgentId) {
         // Update agent using wizard-shaped state; service will normalize
         const res = await patchAgent(existingAgentId, state);

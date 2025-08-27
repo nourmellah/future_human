@@ -5,6 +5,7 @@ import AccountRightPanel from "../components/Account/AccountRightPanel";
 import { useAuth } from "../auth/AuthProvider";
 import React from "react";
 import { updateAccount } from "../services/account";
+import { toast } from "react-hot-toast";
 
 const CENTER_IMG = "src/assets/face1.png";
 
@@ -33,7 +34,7 @@ function toAccountData(user: any | null): AccountData {
 }
 
 export default function Account() {
-  const { user, accessToken, loginWithTokens } = useAuth();
+  const { user, accessToken, login } = useAuth();
 
   const initial = React.useMemo(() => toAccountData(user), [user]);
 
@@ -53,15 +54,27 @@ export default function Account() {
       postalCode: values.postalCode,
       country: values.country,
     };
+    try {
+      const update = await updateAccount(nextUser);
+      console.log(update);
 
-    const update = await updateAccount(nextUser);
-    console.log(update)
+      // Update the Auth context (token unchanged)
+      if (typeof login === "function") {
+        login({
+          email: update.user.email,
+          password: "UNCHANGED", // dummy, won't be used
+        });
+      }
+    } catch (err) {
+      console.error(err);
 
-    // Update the Auth context (token unchanged)
-    if (typeof loginWithTokens === "function") {
-      loginWithTokens({
-        user: nextUser,
-        accessToken: accessToken ?? "",
+      // ❌ Notification d'erreur avec style personnalisé
+      toast.error("Une erreur est survenue lors de la mise à jour.", {
+        className: "custom-toast custom-toast-error",
+        iconTheme: {
+          primary: "#ff3b3b", // Rouge erreur
+          secondary: "#000",   // Fond noir
+        },
       });
     }
   }
@@ -70,15 +83,14 @@ export default function Account() {
     <ThreePaneLayout
       sidebar={<SidebarNav />}
       center={
-        <div className="w-full h-full flex items-center justify-center">
-          <div className="w-[720px] max-w-[90%] rounded-3xl overflow-hidden shadow-xl">
-            <img
-              src={CENTER_IMG}
-              alt="Future Human"
-              className="w-full h-full object-cover"
-            />
-          </div>
-        </div>
+        <aside className="hidden lg:block sticky top-0 h-screen overflow-hidden">
+          <img
+            src={CENTER_IMG}
+            alt="Future Human"
+            className="w-full h-full object-cover select-none pointer-events-none scrollbar-hide"
+            draggable={false}
+          />
+        </aside>
       }
       right={
         <AccountRightPanel

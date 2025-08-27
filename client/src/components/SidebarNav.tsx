@@ -1,31 +1,29 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import * as React from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import LogoMark from "./LogoMark";
-import { useAgents } from "../AgentsProvider";
+import { listAgents } from "../services/agents";
 
 export type Agent = {
   id: number | string;
   identity?: { name?: string; role?: string; desc?: string | null };
   appearance?: { personaId?: string | null; bgColor?: string | null };
   updatedAt?: string;
-  thumbnail?: string; // keep if your JSX references agent.thumbnail
+  thumbnail?: string;
 };
 
 export type SidebarNavProps = {
-	agents?: Agent[];
-	activeAgentId?: string;
-	className?: string;
-	renderAgent?: (agent: Agent, active: boolean, onClick: () => void) => React.ReactNode;
+  agents?: Agent[];          // optional external override
+  className?: string;
+  children?: React.ReactNode;
 };
 
 const ACCENT = "#E7E31B";
-const FALLBACK_THUMB = "/assets/agent-placeholder.png"; // or your existing fallback
+const FALLBACK_THUMB = "/assets/personas/placeholder.png";
 
 const getAgentName = (a: Agent) =>
-  a?.identity?.name ?? `Agent #${a?.id ?? "?"}`;
+  a?.identity?.name?.trim() || (typeof a?.id !== "undefined" ? `Agent #${a.id}` : "Agent");
 
-const getAgentRole = (a: Agent) =>
-  a?.identity?.role ?? "";
+const getAgentRole = (a: Agent) => a?.identity?.role ?? "";
 
 const getAgentThumb = (a: Agent) =>
   a?.thumbnail
@@ -54,21 +52,16 @@ export const SidebarAgentCard: React.FC<{
         `}
         style={{ ["--accent" as any]: ACCENT }}
       >
-        {/* image */}
         <img
           src={getAgentThumb(agent)}
           alt={getAgentName(agent)}
           className="absolute inset-0 h-full w-full object-cover"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
-
-        {/* FULL-WIDTH BOTTOM BAR — not floating */}
         <div className="absolute inset-x-0 bottom-0">
           <div className="bg-[#232327]/95 text-white text-center px-4 py-2">
             <div className="text-base font-extrabold leading-tight truncate">{getAgentName(agent)}</div>
-            <div className="text-[11px] uppercase tracking-widest leading-tight opacity-90 truncate">
-              {getAgentRole(agent) || " "}
-            </div>
+            <div className="text-[11px] text-white/60 truncate">{getAgentRole(agent)}</div>
           </div>
         </div>
       </div>
@@ -76,71 +69,81 @@ export const SidebarAgentCard: React.FC<{
   );
 };
 
-
-const SidebarNav: React.FC<React.PropsWithChildren<SidebarNavProps>> = ({
-	activeAgentId,
-	className = "",
-	renderAgent,
-	children,
+const SidebarNav: React.FC<SidebarNavProps> = ({
+  agents: overrideAgents,
+  className = "",
+  children,
 }) => {
-	const navigate = useNavigate();
-	const { agents, loading, refresh } = useAgents();
+  const navigate = useNavigate();
+  const { id: activeId } = useParams<{ id?: string }>();
 
-	const onAgentClick = (agent: Agent) => {
-		navigate(`/agents/${agent.id}`);
-	};
+  const [agents, setAgents] = React.useState<Agent[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<unknown | null>(null);
 
-	return (
-		<nav className={`h-full flex flex-col ${className}`} aria-label="Sidebar">
-			{/* Hide scrollbars utility (scoped) */}
-			<style>{`
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-      `}</style>
+  React.useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res: any = await listAgents({ signal: ac.signal } as any);
+        const data = Array.isArray(res) ? res : (res?.agents ?? []);
+        setAgents(data);
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => ac.abort();
+  }, []);
 
+  const onAgentClick = (a: Agent) => navigate(`/agents/${a.id}`);
+  const data = overrideAgents ?? agents;
 
-			{/* HEADER — vertically centered block (logo + Create) */}
-			<header className="flex-none h-40 md:h-48 px-2">
-				<div className="w-full h-full flex flex-col items-center justify-center gap-4">
-					<LogoMark src={"src/assets/logo.png"} size={96} />
-					<Link to="/create" className="flex items-center gap-3 text-white font-extrabold select-none" aria-label="Create Agent">
-						<span className="grid place-items-center w-8 h-8 rounded-full bg-white text-black text-2xl leading-none">+</span>
-						<span className="uppercase leading-[0.95] text-[20px] text-left">
-							CREATE<br />
-							AGENT
-						</span>
-					</Link>
-				</div>
-			</header>
+  return (
+    <nav className={`h-full flex flex-col ${className}`} aria-label="Sidebar">
+      <style>{`.no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none } .no-scrollbar::-webkit-scrollbar{ display:none }`}</style>
 
-			{/* Scrollable list of agents — minimal side padding so cards are larger */}
-			<div className="flex-1 overflow-y-auto no-scrollbar px-1 space-y-2">
-				{children}
-				{agents.map((a) => {
-					const active = a.id === activeAgentId;
-					const click = () => onAgentClick(a);
-					return (
-						<div key={a.id}>
-							{renderAgent ? (
-								renderAgent(a, active, click)
-							) : (
-								<SidebarAgentCard agent={a} active={active} onClick={onAgentClick} />
-							)}
-						</div>
-					);
-				})}
-			</div>
+      <header className="flex-none h-40 md:h-48 px-2">
+        <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+          <LogoMark src={"src/assets/logo.png"} size={96} />
+          <Link to="/create" className="flex items-center gap-3 text-white font-extrabold select-none" aria-label="Create Agent">
+            <span className="grid place-items-center w-8 h-8 rounded-full bg-white text-black text-2xl leading-none">+</span>
+            <span className="uppercase leading-[0.95] text-[20px] text-left">
+              CREATE<br />AGENT
+            </span>
+          </Link>
+        </div>
+      </header>
 
-			{/* FOOTER — vertically centered, reduced vertical space */}
-			<footer className="flex-none px-0 p-0 m-0 mt-auto">
-				<button className="w-full h-14 w-7 md:h-16 flex items-center justify-center text-center p-0 m-0">
-					<Link to="/account" className="block text-white font-extrabold uppercase tracking-wide">
-						Account
-					</Link>
-				</button>
-			</footer>
-		</nav>
-	);
+      <div className="flex-1 overflow-y-auto no-scrollbar px-1 space-y-2">
+        {children}
+        {loading && <div className="text-gray-400 text-sm px-3 py-2">Loading agents…</div>}
+        {error ? <div className="text-red-400 text-sm px-3 py-2">Failed to load agents.</div> : null}
+        {!loading && !error && data.map((a) => {
+          const active = String(a.id) === String(activeId ?? "");
+          return (
+            <div key={String(a.id)}>
+              <SidebarAgentCard agent={a} active={active} onClick={onAgentClick} />
+            </div>
+          );
+        })}
+        {!loading && !error && data.length === 0 && (
+          <div className="text-gray-400 text-sm px-3 py-2">No agents yet.</div>
+        )}
+      </div>
+
+      <footer className="flex-none px-0 p-0 m-0 mt-auto">
+        <button className="w-full h-14 md:h-16 flex items-center justify-center text-center p-0 m-0">
+          <Link to="/account" className="block text-white font-extrabold uppercase tracking-wide">
+            Account
+          </Link>
+        </button>
+      </footer>
+    </nav>
+  );
 };
 
 export default SidebarNav;

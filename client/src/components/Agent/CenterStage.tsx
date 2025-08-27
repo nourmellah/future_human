@@ -15,8 +15,8 @@ export type CenterStageProps = {
   /** Optionally disable the chat bar */
   showChat?: boolean;
   onFullscreenChange?: (isFullscreen: boolean) => void; // optional callback
-  creating?: boolean;                  // show the blur overlay
-  creatingText?: string;               // optional custom text
+  saving?: boolean;                  // show the blur overlay
+  savingText?: string;               // optional custom text
   /** Optional controlled messages to display (for simulations) */
   messages?: ChatMessage[];
   /** Optional external handler to send a new message */
@@ -259,8 +259,8 @@ export default function CenterStage({
   bg,
   showChat = true,
   onFullscreenChange,
-  creating,
-  creatingText,
+  saving,
+  savingText: creatingText,
   messages: controlledMessages,
   onSendMessage,
 }: CenterStageProps) {
@@ -326,7 +326,7 @@ export default function CenterStage({
       />
 
       {/* Creating overlay */}
-      {creating && (
+      {saving && (
         <div className="absolute inset-0 z-20">
           <LoadingOverlay alt={creatingText ?? "Creating…"} />
         </div>

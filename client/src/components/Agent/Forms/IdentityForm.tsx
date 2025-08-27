@@ -5,7 +5,7 @@ export type IdentityValues = {
   name: string;
   role: string;
   companyName: string;
-  description: string;
+  desc: string;
 };
 
 export type IdentityFormProps = {
@@ -77,8 +77,8 @@ export default function IdentityForm({ initial, onChange, onSubmit }: IdentityFo
           <textarea
             className="w-full rounded-2xl bg-[#0b0b0b] text-white placeholder-gray-500 border border-[#222] p-4 min-h-[140px] focus:outline-none"
             placeholder="Describe the agent..."
-            value={initial.description}
-            onChange={set("description")} />
+            value={initial.desc}
+            onChange={set("desc")} />
         </label>
 
         {/* Submit handled by parent wizard; keep the button external in the wizard's footer */}

@@ -6,7 +6,6 @@ import Account from "./pages/Account";
 import AgentPage from "./pages/AgentPage";
 import { AuthProvider } from "./auth/AuthProvider";
 import Protected from "./auth/Protected";
-import { AgentsProvider } from "./AgentsProvider";
 
 // Lazy-load pages (adjust paths to your project)
 const AuthScreens = lazy(() => import("./pages/Auth"));
@@ -26,7 +25,6 @@ const Dashboard = () => (
 export default function App() {
   return (
     <AuthProvider>
-      <AgentsProvider>
         <BrowserRouter>
           <Suspense
             fallback={
@@ -62,7 +60,6 @@ export default function App() {
             </Routes>
           </Suspense>
         </BrowserRouter>
-      </AgentsProvider>
     </AuthProvider>
   );
 }

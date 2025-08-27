@@ -1,64 +1,52 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
 import { Crown, Pipette } from "lucide-react";
-import type { AppearanceData } from "../../../state/agentWizard";
+import type { AgentAppearance } from "../../../services/agents";
 
-const DEFAULT_COLORS = ["#0b0b0b", "#111111", "#232327", "#334155", "#94a3b8", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
-
-/* ----------------------------- Types ----------------------------- */
-
-export type Persona = {
-  id: string;
-  name?: string;
-  thumbnail: string;   // URL
-  locked?: boolean;    // show crown when true
-};
-
-export type PersonaFormProps = {
-  /** NEW preferred persistence API */
-  initial?: AppearanceData;                          // { personaId }
-  onChange?: (patch: Partial<AppearanceData>) => void;
-
-  /** LEGACY compatibility (still supported) */
-  selectedId?: string | null;
-  onSelect?: (id: string) => void;
-
-  /** Data sources */
-  personas?: Persona[];                              // if you already fetched them
-  fetchPersonas?: () => Promise<Persona[]>;          // called if personas not provided
-  bannerSrc?: string;
-  fetchBanner?: () => Promise<string>;
-
-  /** Misc */
+type Props = {
+  value: AgentAppearance;
+  onChange: (next: AgentAppearance) => void;
   className?: string;
 };
 
-/* ----------------------------- Defaults ----------------------------- */
 const ACCENT = "#E7E31B";
+const DEFAULT_COLORS = [
+  "#111111",
+  "#1f2937",
+  "#0ea5e9",
+  "#22c55e",
+  "#eab308",
+  "#ef4444",
+  "#a855f7",
+  "#14b8a6",
+  "#f97316",
+];
 
-async function fetchPersonasDefault(): Promise<Persona[]> {
-  // Stub list (first tile locked)
-  return [
-    { id: "studio", name: "Avatar Studio", thumbnail: "/assets/personas/studio.jpg", locked: true },
-    { id: "p1", name: "Aiden", thumbnail: "/assets/personas/1.jpg" },
-    { id: "p2", name: "Maya", thumbnail: "/assets/personas/2.jpg" },
-    { id: "p3", name: "Omar", thumbnail: "/assets/personas/3.jpg" },
-    { id: "p4", name: "Liam", thumbnail: "/assets/personas/4.jpg" },
-    { id: "p5", name: "Noah", thumbnail: "/assets/personas/5.jpg" },
-    { id: "p6", name: "Ava", thumbnail: "/assets/personas/6.jpg" },
-    { id: "p7", name: "Ella", thumbnail: "/assets/personas/7.jpg" },
-    { id: "p8", name: "Zoe", thumbnail: "/assets/personas/8.jpg" },
-  ];
+// Static 9 personas: p1..p9 (ids only; PersonaCard can render however it likes)
+const STATIC_PERSONAS = Array.from({ length: 8 }).map((_, i) => ({ personaId: `p${i + 1}` }));
+
+function isLightHex(hex?: string | null) {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return false;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b; // perceived luminance
+  return L > 160;
 }
 
-/* ----------------------------- UI bits ----------------------------- */
+function openAvatarStudio() {
+  // Logic to open the avatar studio
+}
+
 function PersonaCard({
   persona,
   active,
   onClick,
+  locked = false
 }: {
-  persona: Persona;
+  persona: string;
   active: boolean;
   onClick: () => void;
+  locked?: boolean
 }) {
   return (
     <button
@@ -67,18 +55,18 @@ function PersonaCard({
       className={`relative w-full aspect-square rounded-2xl overflow-hidden border transition-shadow ${active ? "border-transparent" : "border-[#222]"
         }`}
       style={{ boxShadow: active ? `0 0 0 3px ${ACCENT}` : undefined }}
-      title={persona.name}
       aria-pressed={active}
-      aria-label={persona.name}
+      aria-label={persona as string}
     >
+      {/*
       <img
-        src={persona.thumbnail}
-        alt={persona.name || "Persona"}
+        alt={persona || "Persona"}
         className="absolute inset-0 h-full w-full object-cover"
         onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
       />
+      */}
 
-      {persona.locked && (
+      {locked && (
         <div
           className="absolute right-2 top-2 w-6 h-6 rounded-full grid place-items-center"
           style={{ backgroundColor: ACCENT }}
@@ -88,7 +76,7 @@ function PersonaCard({
         </div>
       )}
 
-      {persona.id === "studio" && (
+      {persona === "studio" && (
         <div className="absolute inset-0 grid place-items-center">
           <div className="text-white text-sm sm:text-base font-extrabold tracking-wide text-center drop-shadow">
             AVATAR
@@ -101,76 +89,44 @@ function PersonaCard({
   );
 }
 
-/* ----------------------------- Component ----------------------------- */
-export default function PersonaForm({
-  initial,
-  onChange,
-  selectedId: selectedIdProp,
-  personas,
-  fetchPersonas = fetchPersonasDefault,
-  className = "",
-}: PersonaFormProps) {
-  // Resolve initial selection from either API
-  const resolvedInitialId = (initial?.personaId ?? selectedIdProp) ?? null;
+export default function PersonaForm({ value, onChange, className = "" }: Props) {
+  // Local mirrors for UI control
+  const [bgColor, setBgColor] = React.useState<string>(value?.bgColor ?? "#111111");
+  const [items, setItems] = React.useState<any[]>([]);
+  const [loading] = React.useState<boolean>(false); // no async load; static list
+  const [selected, setSelected] = React.useState<any | null>(null);
+  const colorInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Data sources (prefer provided props; else fetch)
-  const [items, setItems] = useState<Persona[] | null>(personas ?? null);
-  const [loading, setLoading] = useState(false);
-  const [bgColor, setBgColor] = useState<string>(initial?.bgColor ?? "#232327");
-  const colorInputRef = useRef<HTMLInputElement>(null);
+  // Initialize static personas once
+  React.useEffect(() => {
+    setItems(STATIC_PERSONAS);
+  }, []);
 
+  // Sync bg from parent
+  React.useEffect(() => {
+    if (value?.bgColor && value.bgColor !== bgColor) setBgColor(value.bgColor);
+  }, [value?.bgColor]);
+
+  // Sync selected from parent personaId
+  React.useEffect(() => {
+    if (!value?.personaId) {
+      setSelected(null);
+      return;
+    }
+    const match = STATIC_PERSONAS.find((p) => String(p.personaId) === String(value.personaId));
+    setSelected(match ?? null);
+  }, [value?.personaId]);
+
+  // Wiring only: set AgentAppearance fields
   function setColor(c: string) {
     setBgColor(c);
-    onChange?.({ bgColor: c });
+    onChange({ ...value, bgColor: c || null });
   }
 
-  function isLightHex(hex: string): boolean {
-    try {
-      const h = hex.replace("#", "");
-      const r = parseInt(h.substring(0, 2), 16);
-      const g = parseInt(h.substring(2, 4), 16);
-      const b = parseInt(h.substring(4, 6), 16);
-      return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7;
-    } catch { return false; }
-  }
-
-  // Local selection mirrors the resolved prop and stays in sync if parent changes
-  const [selectedId, setSelectedId] = useState<string | null>(resolvedInitialId);
-  useEffect(() => {
-    setSelectedId(resolvedInitialId);
-  }, [resolvedInitialId]);
-
-  // Fetch personas/banner if not provided
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        if (!items) {
-          const data = await fetchPersonas();
-          if (!cancelled) setItems(data);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    if (!items) load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
-
-  // Derived selected object (if needed)
-  const selected = useMemo(() => items?.find((p) => p.id === selectedId) ?? null, [items, selectedId]);
-
-  // Pick handler: update local + bubble up through whichever API the parent uses
-  function pick(p: Persona) {
-    if (p.locked) return; // later: open paywall
-    setSelectedId(p.id);
-
-    // Preferred
-    onChange?.({ personaId: p.id, bgColor });
+  function pick(p: any) {
+    setSelected(p);
+    const id = p?.personaId != null ? String(p.personaId) : "";
+    onChange({ ...value, personaId: id || null });
   }
 
   return (
@@ -197,11 +153,18 @@ export default function PersonaForm({
 
       {/* Grid of personas */}
       <div className="grid grid-cols-3 gap-4">
+        <PersonaCard
+          key={"create"}
+          persona={"create"}
+          active={false}
+          onClick={() => openAvatarStudio()}
+          locked={true}
+        />
         {(items ?? []).map((p) => (
           <PersonaCard
-            key={p.id}
+            key={p.personaId}
             persona={p}
-            active={!!selected && selected.id === p.id}
+            active={String(value.personaId) === String(p.personaId)}
             onClick={() => pick(p)}
           />
         ))}
@@ -224,8 +187,8 @@ export default function PersonaForm({
           <div className="relative w-8 h-8">
             <div
               className={`grid place-items-center w-8 h-8 rounded-full border ${DEFAULT_COLORS.includes((bgColor || "").toLowerCase())
-                  ? "border-[#333]"
-                  : "ring-2 ring-[var(--accent)] border-transparent"
+                ? "border-[#333]"
+                : "ring-2 ring-[var(--accent)] border-transparent"
                 }`}
               style={{ backgroundColor: bgColor, ["--accent" as any]: ACCENT }}
               title="Pick a color"
@@ -238,7 +201,7 @@ export default function PersonaForm({
             {/* input stays on top */}
             <input
               type="color"
-              value={bgColor}
+              value={bgColor as string}
               onChange={(e) => setColor(e.target.value)}
               className="absolute inset-0 w-8 h-8 opacity-0 cursor-pointer rounded-full bg-[#111] appearance-none"
               title="Pick a color"
@@ -251,7 +214,7 @@ export default function PersonaForm({
           <input
             ref={colorInputRef}
             type="color"
-            value={bgColor}
+            value={bgColor as string}
             onChange={(e) => setColor(e.target.value)}
             className="hidden"
           />
@@ -270,8 +233,6 @@ export default function PersonaForm({
           ))}
         </div>
       </div>
-
-
     </div>
   );
 }

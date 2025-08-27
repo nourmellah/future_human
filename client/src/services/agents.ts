@@ -1,260 +1,181 @@
-import * as API from "../lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete } from "../lib/api";
 
-/* ------------------- thin adapter over your api.ts ------------------- */
-function call(fn: string, path: string, body?: any) {
-  const anyAPI = API as any;
+/* ----------------------------- Types (server-aligned) ----------------------------- */
 
-  // Prefer explicit helpers if present (apiGet/apiPost/apiPatch/apiDelete)
-  if (typeof anyAPI[fn] === "function") {
-    return fn === "apiGet" || fn === "apiDelete"
-      ? anyAPI[fn](path)
-      : anyAPI[fn](path, body);
-  }
+export type AgentIdentity = {
+  name: string;
+  role: string;
+  companyName?: string | null;
+  desc?: string | null;
+};
 
-  // Fallback to a generic request(config) if your wrapper exposes it
-  if (typeof anyAPI.request === "function") {
-    const method =
-      fn === "apiGet"
-        ? "GET"
-        : fn === "apiPost"
-        ? "POST"
-        : fn === "apiPatch"
-        ? "PATCH"
-        : fn === "apiDelete"
-        ? "DELETE"
-        : "GET";
-    return anyAPI.request({ method, url: path, data: body });
-  }
+export type AgentAppearance = {
+  personaId?: string | null;
+  bgColor?: string | null;
+};
 
-  throw new Error("API wrapper is missing expected functions");
-}
+export type AgentVoice = {
+  language: string;
+  name: string;
+  // optional passthrough (server may ignore if unused)
+  style?: string | null;
+};
 
-const GET = (p: string) => call("apiGet", p);
-const POST = (p: string, b?: any) => call("apiPost", p, b);
-const PATCH = (p: string, b?: any) => call("apiPatch", p, b);
-const DELETE_ = (p: string) => call("apiDelete", p);
+export type AgentStyle = {
+  formality: number;   // int 0..10
+  pace: number;        // int 0..10
+  calm: number;        // int 0..10
+  introvert: number;   // int 0..10
+  empathy: number;     // int 0..10
+  humor: number;       // int 0..10
+  creativity: number;  // int 0..10
+  directness: number;  // int 0..10
+};
 
-/* ---------------------- types & normalization ------------------------ */
-type AgentServerCreate = {
-  identity: { name: string; role: string; companyName?: string | null; desc?: string | null };
-  appearance?: { personaId?: string | null; bgColor?: string | null };
+export type AgentBrain = {
+  id: string; // required on create
+  instructions?: string | null;
+};
+
+export type AgentCards = {
+  backgroundId?: string | null;
+};
+
+export type Agent = {
+  id: number;
+  ownerId: number;
+  identity: AgentIdentity;
+  appearance: AgentAppearance;
   voice: { language: string; name: string };
-  style: {
-    formality: number; pace: number; calm: number; introvert: number;
-    empathy: number; humor: number; creativity: number; directness: number;
-  };
+  style: AgentStyle;
   brain: { id: string; instructions?: string | null };
-  cards?: { backgroundId?: string | null };
+  cards: AgentCards;
   draftId?: string | null;
-};
-type AgentServerUpdate = Partial<AgentServerCreate>;
-type Agent = { id: number | string } & AgentServerCreate;
-
-type WizardStateLike = {
-  identity?: { name?: string; role?: string; description?: string | null };
-  appearance?: { personaId?: string | null; bgColor?: string | null; backgroundColor?: string | null };
-  voiceSoul?: {
-    language?: string; voice?: string;
-    styleFormality?: number; stylePace?: number;
-    tempCalm?: number; tempIntrovert?: number;
-    empathy?: number; humor?: number; creativity?: number; directness?: number;
-  };
-  style?: Partial<AgentServerCreate["style"]>;
-  voice?: Partial<AgentServerCreate["voice"]>;
-  brain?: { brainId?: string; id?: string; instructions?: string | null };
-  brainId?: string;
-  cards?: { backgroundId?: string | null; background?: { id?: string } };
-  draftId?: string | null;
-  connections?: { items?: any[] };
+  createdAt: string;
+  updatedAt: string;
 };
 
-const clamp01 = (v: any) =>
-  typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(10, v)) : 5;
-const clean = <T extends object>(o: T): T => JSON.parse(JSON.stringify(o));
-const isHex = (s?: string | null) => !!s && /^[#]?[0-9a-fA-F]{3,8}$/.test(s);
-const normHex = (s?: string | null) => (s ? (s.startsWith("#") ? s : `#${s}`) : null);
+export type AgentCreate = {
+  identity: AgentIdentity;
+  appearance?: AgentAppearance;
+  voice: AgentVoice;
+  style: AgentStyle;
+  brain: AgentBrain;
+  cards?: AgentCards;
+  draftId?: string | null;
+};
 
-export function toServerAgentPayload(input: WizardStateLike | AgentServerCreate): AgentServerCreate {
-  // Already server-shaped?
-  if ((input as any)?.identity?.desc !== undefined && (input as any)?.voice?.language) {
-    const a = input as AgentServerCreate;
-    return clean({
-      identity: {
-        name: a.identity.name?.trim(),
-        role: a.identity.role?.trim(),
-        desc: a.identity.desc ?? null,
-      },
-      appearance: {
-        personaId: a.appearance?.personaId ?? null,
-        bgColor: isHex(a.appearance?.bgColor) ? normHex(a.appearance?.bgColor)! : null,
-      },
-      voice: { language: a.voice.language || "en", name: a.voice.name || "alex" },
-      style: {
-        formality: clamp01(a.style.formality),
-        pace: clamp01(a.style.pace),
-        calm: clamp01(a.style.calm),
-        introvert: clamp01(a.style.introvert),
-        empathy: clamp01(a.style.empathy),
-        humor: clamp01(a.style.humor),
-        creativity: clamp01(a.style.creativity),
-        directness: clamp01(a.style.directness),
-      },
-      brain: { id: a.brain.id, instructions: a.brain.instructions ?? null },
-      cards: { backgroundId: a.cards?.backgroundId ?? null },
-      draftId: a.draftId ?? null,
-    });
-  }
+export type AgentUpdate = {
+  identity?: Partial<AgentIdentity>;
+  appearance?: Partial<AgentAppearance>;
+  voice?: Partial<AgentVoice>;
+  style?: Partial<AgentStyle>;
+  brain?: Partial<AgentBrain>;
+  cards?: Partial<AgentCards>;
+  draftId?: string | null;
+};
 
-  const w = input as WizardStateLike;
-  const v = w.voiceSoul ?? {};
-  const bg = w.appearance?.bgColor ?? w.appearance?.backgroundColor ?? null;
+/* --------------------------- Connections sub-API types --------------------------- */
 
-  return clean({
-    identity: {
-      name: (w.identity?.name ?? "").trim(),
-      role: (w.identity?.role ?? "").trim(),
-      desc: (w.identity?.description ?? null) || null,
-    },
-    appearance: {
-      personaId: w.appearance?.personaId ?? null,
-      bgColor: isHex(bg) ? normHex(bg)! : null,
-    },
-    voice: {
-      language: (v.language || w.voice?.language || "en") as string,
-      name: (v.voice || w.voice?.name || "alex") as string,
-    },
-    style: {
-      formality: clamp01(v.styleFormality ?? w.style?.formality),
-      pace: clamp01(v.stylePace ?? w.style?.pace),
-      calm: clamp01(v.tempCalm ?? w.style?.calm),
-      introvert: clamp01(v.tempIntrovert ?? w.style?.introvert),
-      empathy: clamp01(v.empathy ?? w.style?.empathy),
-      humor: clamp01(v.humor ?? w.style?.humor),
-      creativity: clamp01(v.creativity ?? w.style?.creativity),
-      directness: clamp01(v.directness ?? w.style?.directness),
-    },
-    brain: {
-      id: (w.brain?.id ?? w.brain?.brainId ?? w.brainId ?? "").toString(),
-      instructions: w.brain?.instructions ?? null,
-    },
-    cards: { backgroundId: w.cards?.backgroundId ?? w.cards?.background?.id ?? null },
-    draftId: w.draftId ?? null,
-  });
-}
+export type AgentConnection = {
+  id: number;
+  agentId: number;
+  extId: string;
+  providerId: string;
+  status: "connected" | "needs_setup" | "error";
+  config?: any | null;
+  token?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
-/* ----------------------- connections normalization -------------------- */
-type ConnServerCreate = {
+export type ConnectionCreate = {
   extId: string;
   providerId: string;
   status?: "connected" | "needs_setup" | "error";
   config?: any;
   token?: string | null;
 };
-type ConnLike = any;
 
-export function toServerConnectionPayload(c: ConnLike): ConnServerCreate {
-  const extId =
-    c?.extId ?? c?.externalId ?? (typeof c?.id === "string" ? c.id : String(c?.ext_id ?? ""));
-  const providerId =
-    c?.providerId ?? c?.provider?.id ?? c?.provider_key ?? c?.provider ?? "";
+export type ConnectionUpdate = Partial<ConnectionCreate>;
 
-  return clean({
-    extId: String(extId || "").trim(),
-    providerId: String(providerId || "").trim(),
-    status: c?.status ?? "needs_setup",
-    config: c?.config ?? c?.settings ?? undefined,
-    token: c?.token ?? c?.authToken ?? null,
-  });
+/* --------------------------------- Utilities --------------------------------- */
+
+// Remove only undefined (keep nulls so server can null fields intentionally)
+function clean<T>(obj: T): T {
+  if (obj == null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(clean) as any;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    out[k] = typeof v === "object" && v !== null ? clean(v) : v;
+  }
+  return out;
 }
 
-/* ------------------------------- Agents API --------------------------- */
+/* -------------------------------- Endpoints -------------------------------- */
+
+const base = "/agents";
+
+/** List current user's agents */
 export async function listAgents(): Promise<{ agents: Agent[] }> {
-  return GET("/agents");
+  return apiGet(`${base}`);
 }
 
+/** Read one agent by id */
 export async function getAgent(id: number | string): Promise<{ agent: Agent }> {
-  return GET(`/agents/${id}`);
+  return apiGet(`${base}/${id}`);
 }
 
-export async function createAgent(
-  payload: AgentServerCreate | WizardStateLike
-): Promise<{ agent: Agent }> {
-  return POST("/agents", toServerAgentPayload(payload));
+/** Create an agent (server-shaped payload only) */
+export async function createAgent(payload: AgentCreate): Promise<{ agent: Agent }> {
+  return apiPost(`${base}`, clean(payload));
 }
 
+/** Partial update (send only the top-level objects you intend to change) */
 export async function patchAgent(
   id: number | string,
-  patch: AgentServerUpdate | WizardStateLike
+  patch: AgentUpdate
 ): Promise<{ agent: Agent }> {
-  // Map wizard-shaped partials to server shape, then prune to only provided top-level keys
-  const mapped = toServerAgentPayload(patch as any);
-  const pruned: any = {};
-  if ((patch as any).identity) pruned.identity = mapped.identity;
-  if ((patch as any).appearance) pruned.appearance = mapped.appearance;
-  if ((patch as any).voice || (patch as any).voiceSoul) pruned.voice = mapped.voice;
-  if ((patch as any).style || (patch as any).voiceSoul) pruned.style = mapped.style;
-  if ((patch as any).brain || (patch as any).brainId) pruned.brain = mapped.brain;
-  if ((patch as any).cards) pruned.cards = mapped.cards;
-  if ((patch as any).draftId !== undefined) pruned.draftId = mapped.draftId;
-  return PATCH(`/agents/${id}`, clean(pruned));
+  return apiPatch(`${base}/${id}`, clean(patch));
 }
 
+/** Delete one agent */
 export async function deleteAgent(id: number | string): Promise<{ ok: true }> {
-  return DELETE_(`/agents/${id}`);
+  return apiDelete(`${base}/${id}`);
 }
 
-/* ---------------------------- Connections API ------------------------- */
-export async function listConnections(agentId: number | string): Promise<{ connections: any[] }> {
-  return GET(`/agents/${agentId}/connections`);
+/* -------------------------- Connections sub-API -------------------------- */
+
+export async function listConnections(
+  agentId: number | string
+): Promise<{ connections: AgentConnection[] }> {
+  return apiGet(`${base}/${agentId}/connections`);
 }
 
-export async function createConnection(
+// Convenience upsert: PATCH if extId exists, otherwise POST
+export async function upsertConnections(
   agentId: number | string,
-  conn: ConnLike
-): Promise<{ connection: any }> {
-  return POST(`/agents/${agentId}/connections`, toServerConnectionPayload(conn));
-}
+  items:
+    | (ConnectionCreate & { id?: number })
+    | Array<ConnectionCreate & { id?: number }>
+): Promise<{ connections: AgentConnection[] }> {
+  const arr = Array.isArray(items) ? items : [items];
+  const { connections: existing } = await listConnections(agentId);
 
-export async function updateConnection(
-  agentId: number | string,
-  connId: number | string,
-  patch: Partial<ConnLike>
-): Promise<{ connection: any }> {
-  const body = toServerConnectionPayload({ ...patch });
-  // remove keys that weren't in the original patch
-  Object.keys(body).forEach((k) => {
-    if ((patch as any)[k] === undefined) delete (body as any)[k];
-  });
-  return PATCH(`/agents/${agentId}/connections/${connId}`, body);
-}
-
-export async function deleteConnection(
-  agentId: number | string,
-  connId: number | string
-): Promise<{ ok: true }> {
-  return DELETE_(`/agents/${agentId}/connections/${connId}`);
-}
-
-/* ---------------------- Convenience for the Wizard -------------------- */
-export async function upsertConnections(agentId: number | string, items: any[] = []): Promise<void> {
-  if (!Array.isArray(items) || !items.length) return;
-  await Promise.all(
-    items.map((c) =>
-      typeof c?.id === "number"
-        ? updateConnection(agentId, c.id, c)
-        : createConnection(agentId, c)
-    )
-  );
-}
-
-export async function createAgentFromWizard(
-  payload: WizardStateLike | AgentServerCreate,
-  opts?: { upsertConnections?: any[] }
-): Promise<{ agent: Agent }> {
-  const res = await createAgent(payload);
-  const agentId = (res as any)?.agent?.id ?? (res as any)?.id;
-  if (agentId != null && opts?.upsertConnections?.length) {
-    await upsertConnections(agentId, opts.upsertConnections);
+  for (const item of arr) {
+    const withId = (item as any).id as number | undefined;
+    if (withId) {
+      await apiPatch(`${base}/${agentId}/connections/${withId}`, clean(item));
+      continue;
+    }
+    const match = existing.find(c => c.extId === item.extId);
+    if (match) {
+      await apiPatch(`${base}/${agentId}/connections/${match.id}`, clean(item));
+    } else {
+      await apiPost(`${base}/${agentId}/connections`, clean(item));
+    }
   }
-  return res;
+
+  return listConnections(agentId);
 }
