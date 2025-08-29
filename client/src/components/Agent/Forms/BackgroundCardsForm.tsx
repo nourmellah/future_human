@@ -31,14 +31,14 @@ export type BackgroundCardsFormProps = {
 async function fetchBackgroundsStub(): Promise<BackgroundCard[]> {
   // Replace with your API (e.g., GET /api/backgrounds)
   return [
-    { id: "dubai", name: "Dubai", thumbnail: "/assets/bg/dubai.jpg" },
-    { id: "bali", name: "Bali", thumbnail: "/assets/bg/bali.jpg" },
-    { id: "greece", name: "Greece", thumbnail: "/assets/bg/greece.jpg" },
-    { id: "djerba", name: "Djerba", thumbnail: "/assets/bg/djerba.jpg" },
-    { id: "phil", name: "Philippines", thumbnail: "/assets/bg/philippines.jpg" },
-    { id: "italy", name: "Italy", thumbnail: "/assets/bg/italy.jpg" },
-    { id: "paris", name: "Paris", thumbnail: "/assets/bg/paris.jpg" },
-    { id: "la", name: "Los Angeles", thumbnail: "/assets/bg/la.jpg" },
+    { id: "dubai", name: "Dubai", thumbnail: "/public/assets/bg/dubai.jpg" },
+    { id: "bali", name: "Bali", thumbnail: "/public/assets/bg/bali.jpg" },
+    { id: "greece", name: "Greece", thumbnail: "/public/assets/bg/greece.jpg" },
+    { id: "djerba", name: "Djerba", thumbnail: "/public/assets/bg/djerba.jpg" },
+    { id: "phil", name: "Philippines", thumbnail: "/public/assets/bg/philippines.jpg" },
+    { id: "italy", name: "Italy", thumbnail: "/public/assets/bg/italy.jpg" },
+    { id: "paris", name: "Paris", thumbnail: "/public/assets/bg/paris.jpg" },
+    { id: "la", name: "Los Angeles", thumbnail: "/public/assets/bg/la.jpg" },
   ];
 }
 
@@ -275,7 +275,7 @@ export default function BackgroundCardsForm({
 
         {/* Banner image */}
         <img
-          src={"src/assets/agent/banners/step-2.png"}
+          src={"/public/assets/agent/banners/step-2.png"}
           alt="Give your Future Human a special style"
           className="block w-full rounded-3xl mt-0 mb-5"
           onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}

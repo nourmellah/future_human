@@ -33,7 +33,7 @@ export default function IdentityForm({ initial, onChange, onSubmit }: IdentityFo
           Step 1: Identity
         </h3>
         <img
-          src="src/assets/agent/banners/step-1.png"
+          src="/public/assets/agent/banners/step-1.png"
           alt="Give your Future Human an identity"
           className="block w-full rounded-3xl mt-0 mb-5"
           onError={(e) => {

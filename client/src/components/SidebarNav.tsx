@@ -18,7 +18,7 @@ export type SidebarNavProps = {
 };
 
 const ACCENT = "#E7E31B";
-const FALLBACK_THUMB = "/assets/personas/placeholder.png";
+const FALLBACK_THUMB = "/public/assets/personas/placeholder.png";
 
 const getAgentName = (a: Agent) =>
   a?.identity?.name?.trim() || (typeof a?.id !== "undefined" ? `Agent #${a.id}` : "Agent");
@@ -29,7 +29,7 @@ const getAgentThumb = (a: Agent) =>
   a?.thumbnail
     ? a.thumbnail
     : a?.appearance?.personaId
-    ? `/assets/personas/${a.appearance.personaId}.png`
+    ? `/public/assets/personas/${a.appearance.personaId}.png`
     : FALLBACK_THUMB;
 
 export const SidebarAgentCard: React.FC<{
@@ -87,7 +87,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const res: any = await listAgents({ signal: ac.signal } as any);
+        const res: any = await listAgents();
         const data = Array.isArray(res) ? res : (res?.agents ?? []);
         setAgents(data);
       } catch (e) {
@@ -108,7 +108,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({
 
       <header className="flex-none h-40 md:h-48 px-2">
         <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-          <LogoMark src={"src/assets/logo.png"} size={96} />
+          <LogoMark src={"/public/assets/logo.png"} size={96} />
           <Link to="/create" className="flex items-center gap-3 text-white font-extrabold select-none" aria-label="Create Agent">
             <span className="grid place-items-center w-8 h-8 rounded-full bg-white text-black text-2xl leading-none">+</span>
             <span className="uppercase leading-[0.95] text-[20px] text-left">
