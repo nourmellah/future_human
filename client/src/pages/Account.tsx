@@ -7,7 +7,7 @@ import React from "react";
 import { updateAccount } from "../services/account";
 import { toast } from "react-hot-toast";
 
-const CENTER_IMG = "src/assets/face1.png";
+const CENTER_IMG = "/public/assets/face1.png";
 
 export type AccountData = {
   firstName: string;

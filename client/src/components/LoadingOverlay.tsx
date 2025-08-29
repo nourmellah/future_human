@@ -4,8 +4,8 @@ import React from "react";
  * LoadingOverlay — dims the screen and shows a centered GIF.
  *
  * Usage:
- *   <LoadingOverlay gifSrc="src/assets/loader.gif" />
- *   <LoadingOverlay open={isLoading} gifSrc="src/assets/loader.gif" size={300} />
+ *   <LoadingOverlay gifSrc="/public/assets/loader.gif" />
+ *   <LoadingOverlay open={isLoading} gifSrc="/public/assets/loader.gif" size={300} />
  */
 
 export interface LoadingOverlayProps {
@@ -27,7 +27,7 @@ export interface LoadingOverlayProps {
 
 const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
 	open = true,
-	gifSrc = "src/assets/loader.gif",
+	gifSrc = "/public/assets/loader.gif",
 	size = 300,
 	dimOpacity = 0.6,
 	blur = true,

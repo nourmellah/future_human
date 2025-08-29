@@ -26,9 +26,9 @@ export type FormProps<Payload> = {
 };
 
 // === Static config (assets + accent) ===
-const FACE_SRC = "src/assets/face2.png";
-const LOGO_SRC = "src/assets/logo.png";
-const LOADER_GIF = "src/assets/loader.gif";
+const FACE_SRC = "/public/assets/face2.png";
+const LOGO_SRC = "/public/assets/logo.png";
+const LOADER_GIF = "/public/assets/loader.gif";
 const ACCENT = "#E7E31B";
 
 function SubmitButton({ children, disabled }: React.PropsWithChildren<{ disabled?: boolean }>) {
