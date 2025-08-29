@@ -14,7 +14,7 @@ import ConnectionsForm from "../components/Agent/Forms/ConnectionsForm";
 import { getAgent, createAgent, patchAgent, listConnections, upsertConnections, deleteAgent } from "../services/agents";
 import toast from "react-hot-toast";
 import { Zap, IdCard, UserRound, AudioLines, Layers, Brain, List, Eye, Trash2 } from "lucide-react";
-import { Notification, useNotify } from "../components/Notification";
+import InlineNotification from "../components/Notification";
 
 const ACCENT = "#E7E31B";
 const DONE = "#22c55e";
@@ -182,7 +182,6 @@ function StepFooter({ onBack, onNext, nextLabel = "Save & Next" }: { onBack: () 
 export default function AgentPage() {
   const editId = useEditId();
   const navigate = useNavigate();
-  const notify = useNotify();
 
   const [current, setCurrent] = React.useState<StepKey>("identity");
 
@@ -209,6 +208,8 @@ export default function AgentPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [showNotif, setShowNotif] = React.useState(false);
+  const [notifMessage, setNotifMessage] = React.useState<{ title: string; description?: string; variant?: "info" | "success" | "error" | "warning" }>({ title: "", description: "", variant: "info" });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
 
@@ -282,11 +283,13 @@ export default function AgentPage() {
     try {
       setDeleting(true);
       await deleteAgent(editId);
-      notify({ title: "Agent deleted.", variant: "success" });
+      setNotifMessage({ title: "Agent deleted.", variant: "success" });
+      setShowNotif(true);
       navigate("/agents");
     } catch (e: any) {
       console.error(e);
-      notify({ title: "Delete failed", description: e?.message, variant: "error" });
+      setNotifMessage({ title: "Delete failed", description: e?.message, variant: "error" });
+      setShowNotif(true);
     } finally {
       setDeleting(false);
       setConfirmDeleteOpen(false);
@@ -300,18 +303,21 @@ export default function AgentPage() {
       console.log("Saving agent", { editId, payload });
       if (editId) {
         await patchAgent(editId, payload as any);
-        toast.success("Agent updated.");
+        setNotifMessage({ title: "Agent updated.", variant: "success" });
+        setShowNotif(true);
       } else {
         const res = await createAgent(payload as any);
         const agentId = (res as any)?.agent?.id ?? (res as any)?.id;
         if (agentId != null && connections.items?.length) {
           await upsertConnections(agentId, connections.items);
         }
-        notify({ title: "Agent created.", variant: "success" });
+        setNotifMessage({ title: "Agent created.", variant: "success" });
+        setShowNotif(true);
       }
     } catch (e: any) {
       console.error(e);
-      notify({ title: "Save failed", description: e?.message, variant: "error" });
+      setNotifMessage({ title: "Save failed", description: e?.message, variant: "error" });
+      setShowNotif(true);
     } finally {
       setSaving(false);
     }
@@ -410,7 +416,7 @@ export default function AgentPage() {
                 {active === "voiceSoul" && (
                   <>
                     <VoiceSoulForm
-                      initial={{voice, style} as any}
+                      initial={{ voice, style } as any}
                       onChange={(d: any) => {
                         setVoice((prev) => ({ ...prev, ...d.voice }));
                         setStyle((prev) => ({ ...prev, ...d.style }));
@@ -505,6 +511,16 @@ export default function AgentPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showNotif && (
+        <InlineNotification
+          title={notifMessage.title}
+          description={notifMessage.description}
+          variant={notifMessage.variant}
+          duration={3000}
+          onClose={() => setShowNotif(false)}
+        />
       )}
     </>
   );
