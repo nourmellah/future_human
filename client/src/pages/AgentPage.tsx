@@ -11,7 +11,7 @@ import BrainForm from "../components/Agent/Forms/BrainForm";
 import BackgroundCardsForm from "../components/Agent/Forms/BackgroundCardsForm";
 import ConnectionsForm from "../components/Agent/Forms/ConnectionsForm";
 
-import { getAgent, createAgent, patchAgent, listConnections, upsertConnections, deleteAgent } from "../services/agents";
+import { getAgent, createAgent, patchAgent, listConnections, deleteAgent } from "../services/agents";
 import toast from "react-hot-toast";
 import { Zap, IdCard, UserRound, AudioLines, Layers, Brain, List, Eye, Trash2 } from "lucide-react";
 import InlineNotification from "../components/Notification";
@@ -235,8 +235,8 @@ export default function AgentPage() {
           // fetch connections but do not block page
           try {
             const conn = await listConnections(editId);
-            if (!cancelled && conn?.connections) {
-              setConnections({ items: conn.connections });
+            if (!cancelled && conn) {
+              setConnections({ items: conn });
             }
           } catch {
             /* ignore connections error */
@@ -308,9 +308,7 @@ export default function AgentPage() {
       } else {
         const res = await createAgent(payload as any);
         const agentId = (res as any)?.agent?.id ?? (res as any)?.id;
-        if (agentId != null && connections.items?.length) {
-          await upsertConnections(agentId, connections.items);
-        }
+
         setNotifMessage({ title: "Agent created.", variant: "success" });
         setShowNotif(true);
       }

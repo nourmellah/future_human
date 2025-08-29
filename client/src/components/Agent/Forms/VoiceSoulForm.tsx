@@ -99,7 +99,7 @@ export default function VoiceSoulForm({
 
         {/* Banner image */}
         <img
-          src={"/public/assets/agent/banners/step-3.png"}
+          src={"/assets/agent/banners/step-3.png"}
           alt="Give your Future Human a special style"
           className="block w-full rounded-3xl mt-0 mb-5"
           onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}

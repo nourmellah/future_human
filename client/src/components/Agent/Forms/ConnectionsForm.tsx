@@ -1,15 +1,36 @@
 // src/components/create/ConnectionsForm.tsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus, X, Settings, Search,
   Facebook, MessageCircle, Mail, Calendar, ShoppingBag, Globe
 } from "lucide-react";
-import type { Connection } from "../../../state/agentWizard";
+import {
+  listConnections,
+  createConnection,
+  updateConnection,
+  deleteConnection,
+} from "../../../services/agents";
+import { useParams } from "react-router-dom";
+import InlineNotification from "../../Notification";
 
 const ACCENT = "#E7E31B";
 
 /* -------------------- Types -------------------- */
+type ConnectionStatus = "connected" | "needs_setup" | "error";
+
+type ConnectionItem = {
+  id?: number | string;
+  agentId?: number | string;
+  providerId: string;
+  extId: string;
+  status?: ConnectionStatus;
+  config?: any | null;
+  token?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type Category = "social" | "email" | "calendar" | "commerce" | "messaging" | "automation" | "other";
 
 export type ProviderId =
@@ -22,6 +43,7 @@ export type ProviderId =
 
 export type ProviderMeta = {
   id: ProviderId;
+  extId: string;
   name: string;
   icon: React.ReactNode;
   category: Category;
@@ -31,17 +53,25 @@ export type ProviderMeta = {
   getConfigSchema?: (() => Promise<Array<{ name: string; label: string; type?: "text" | "secret" }>>) | Array<{ name: string; label: string; type?: "text" | "secret" }>;
 };
 
-export type ConnectionsFormProps = {
-  /** Initial seed (from parent store). Used once. */
-  initial?: Connection[];
-  /** Called when the user adds/removes/configures connections. */
-  onChange?: (items: Connection[]) => void;
+const sameVal = (a: any, b: any) => {
+  if (typeof a === "object" && typeof b === "object") {
+    try { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); } catch { return a === b; }
+  }
+  return a === b;
 };
+
+const equalConn = (a: ConnectionItem, b: ConnectionItem) =>
+  a.providerId === b.providerId &&
+  a.extId === b.extId &&
+  (a.status ?? "needs_setup") === (b.status ?? "needs_setup") &&
+  sameVal(a.config ?? null, b.config ?? null) &&
+  (a.token ?? null) === (b.token ?? null);
 
 /* -------------------- Provider registry -------------------- */
 const PROVIDERS: ProviderMeta[] = [
   {
     id: "facebook",
+    extId: "facebook",
     name: "Facebook",
     icon: <Facebook className="w-5 h-5" />,
     category: "social",
@@ -52,6 +82,7 @@ const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "whatsapp",
+    extId: "whatsapp",
     name: "WhatsApp",
     icon: <MessageCircle className="w-5 h-5" />,
     category: "messaging",
@@ -61,6 +92,7 @@ const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "gmail",
+    extId: "gmail",
     name: "Gmail",
     icon: <Mail className="w-5 h-5" />,
     category: "email",
@@ -70,6 +102,7 @@ const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "google_calendar",
+    extId: "google_calendar",
     name: "Google Calendar",
     icon: <Calendar className="w-5 h-5" />,
     category: "calendar",
@@ -79,6 +112,7 @@ const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "shopify",
+    extId: "shopify",
     name: "Shopify",
     icon: <ShoppingBag className="w-5 h-5" />,
     category: "commerce",
@@ -91,6 +125,7 @@ const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "webhook",
+    extId: "webhook",
     name: "Webhook",
     icon: <Globe className="w-5 h-5" />,
     category: "automation",
@@ -338,7 +373,7 @@ function ConnectionTile({
   onConfigure,
 }: {
   provider: ProviderMeta;
-  connection: Connection;
+  connection: ConnectionItem;
   onRemove: () => void;
   onConfigure: () => void;
 }) {
@@ -382,85 +417,245 @@ function ConnectionTile({
     </div>
   );
 }
+// -------------------- Main Form --------------------
+export type ConnectionsFormProps = {
+  /** Initial seed (optional; if provided we still reload from server once agentId is known) */
+  initial?: ConnectionItem[];
+  /** Called whenever rows change (after a successful save or local-only edit if no agentId yet) */
+  onChange?: (rows: ConnectionItem[]) => void;
+};
 
-/* -------------------- Main Form -------------------- */
-export default function ConnectionsForm({
-  initial,
-  onChange,
-}: ConnectionsFormProps) {
-  // ✅ Initialize from `initial` only once; we don't re-sync on every parent render.
-  const [items, setItems] = useState<Connection[]>(() => initial ?? []);
+export default function ConnectionsForm({ initial, onChange }: ConnectionsFormProps) {
+  const { id: routeId } = useParams();
+  const agentId = (initial as any)?.agentId ?? routeId;
 
-  // Local UI state
-  const [catalogOpen, setCatalogOpen] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
-  const [configTarget, setConfigTarget] = useState<{ provider: ProviderMeta; id: string } | null>(null);
+  // Single source of truth for what's on screen
+  const [rows, setRows] = React.useState<ConnectionItem[]>(() => initial ?? []);
+  // Server snapshot to compute deltas against
+  const initialRef = React.useRef<ConnectionItem[]>(initial ?? []);
 
-  // Provider lookups
-  const catalogById = useMemo(() => Object.fromEntries(PROVIDERS.map((p) => [p.id, p])), []);
+  const [loading, setLoading] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
 
-  /* ---------- User-intent actions (these are the ONLY places we call onChange) ---------- */
-  async function handlePickProvider(p: ProviderMeta) {
-    setCatalogOpen(false);
+  const [notifMessage, setNotifMessage] = React.useState<{ title: string; description?: string; variant?: "info" | "success" | "error" | "warning" }>({ title: "", description: "", variant: "info" });
+  const [showNotif, setShowNotif] = React.useState(false);
 
-    // Try OAuth/API handshake (stubbed)
-    let token: string | undefined;
-    try {
-      token = (await p.startAuth?.())?.token;
-    } catch {
-      // ignore
+  // UI state (unchanged visuals)
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
+  const [configOpen, setConfigOpen] = React.useState(false);
+  const [configTarget, setConfigTarget] = React.useState<{ provider: ProviderMeta; id: string } | null>(null);
+
+  // Provider lookups (reuse your PROVIDERS + icons)
+  const catalogById = React.useMemo(
+    () => Object.fromEntries(PROVIDERS.map((p) => [p.id, p])),
+    []
+  );
+
+  // ---------- helpers ----------
+  const canSubmit = React.useMemo(() => !loading && !submitting && !!agentId, [loading, submitting, agentId]);
+
+  // Create a stable temp id for brand new local rows (until the server returns a real id)
+  const makeTempId = (providerId: string) => `tmp:${providerId}:${Date.now()}`;
+
+  // After we call saveConnectionsDelta(), the server returns created/updated items.
+  // We merge returned ids back into our "after" array so UI stops using tmp:* IDs.
+  function reconcileIds(
+    after: ConnectionItem[],
+    created: ConnectionItem[],
+    updated: ConnectionItem[]
+  ): ConnectionItem[] {
+    const byProviderKey = (c: ConnectionItem) => `${c.providerId}#${c.extId}`;
+
+    const createdMap = new Map(created.map((c) => [byProviderKey(c), c]));
+    const updatedMap = new Map(updated.map((c) => [(c.id ?? byProviderKey(c)).toString(), c]));
+
+    return after.map((row) => {
+      // Prefer matching by real id if present, else providerId#extId for newly created
+      if (row.id != null && updatedMap.has(row.id.toString())) {
+        const srv = updatedMap.get(row.id.toString())!;
+        return { ...row, id: srv.id, status: srv.status ?? row.status };
+      }
+      const key = byProviderKey(row);
+      if ((row.id == null || String(row.id).startsWith("tmp:")) && createdMap.has(key)) {
+        const srv = createdMap.get(key)!;
+        return { ...row, id: srv.id, status: srv.status ?? row.status };
+      }
+      return row;
+    });
+  }
+
+  async function applyDelta(before: ConnectionItem[], after: ConnectionItem[]) {
+    // If we don't have an agentId yet, just update locally and notify parent.
+    if (!agentId) {
+      setRows(after);
+      initialRef.current = after;
+      onChange?.(after);
+      return;
     }
 
-    const newConn: Connection = {
-      id: uid(),
-      providerId: p.id,
-      token,
-      status: token ? "connected" : "needs_setup",
-    };
-
-    setItems((prev) => {
-      const next = [newConn, ...prev];
-      onChange?.(next);
-      return next;
-    });
-
-    // If provider requires config, open modal
-    if (!token || p.getConfigSchema) {
-      setConfigTarget({ provider: p, id: newConn.id });
-      setConfigOpen(true);
+    setSubmitting(true);
+    try {
+      const { created, updated } = await saveConnectionsDelta(before, after);
+      const reconciled = reconcileIds(after, created, updated);
+      setRows(reconciled);
+      initialRef.current = reconciled;
+      onChange?.(reconciled);
+      setNotifMessage({ title: "Success", description: "Connections saved successfully", variant: "success" });
+      setShowNotif(true);
+    } catch (e) {
+      console.error(e);
+      setNotifMessage({ title: "Error", description: "Failed to save connections", variant: "error" });
+      setShowNotif(true);
+      // Do not mutate rows on failure
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  function openConfig(c: Connection) {
-    const provider = catalogById[c.providerId];
-    if (!provider) return;
-    setConfigTarget({ provider, id: c.id });
+  const saveConnectionsDelta = async (before: ConnectionItem[], after: ConnectionItem[]) => {
+    const key = (c: ConnectionItem) => (c.id != null ? `id:${c.id}` : `k:${c.providerId}#${c.extId}`);
+
+    const pre = new Map(before.map((c) => [key(c), c]));
+    const cur = new Map(after.map((c) => [key(c), c]));
+
+    const created: ConnectionItem[] = [];
+    const updated: ConnectionItem[] = [];
+    const deleted: (number | string)[] = [];
+
+    // Create + Update
+    for (const [k, c] of cur) {
+      const prev = pre.get(k);
+      if (!prev) {
+        const made = await createConnection(agentId!, {
+          providerId: c.providerId,
+          extId: c.extId,
+          status: c.status ?? "needs_setup",
+          config: c.config ?? null,
+          token: c.token ?? null,
+        });
+        created.push(made);
+        continue;
+      }
+      if (!equalConn(prev, c) && prev.id != null) {
+        const up = await updateConnection(agentId!, prev.id, {
+          providerId: c.providerId,
+          extId: c.extId,
+          status: c.status,
+          config: c.config,
+          token: c.token,
+        });
+        updated.push(up);
+      }
+    }
+
+    // Delete
+    for (const [k, c] of pre) {
+      if (!cur.has(k) && c.id != null) {
+        await deleteConnection(agentId!, c.id);
+        deleted.push(c.id);
+      }
+    }
+
+    return { created, updated, deleted };
+  };
+
+  // ---------- lifecycle ----------
+  // Reload from server when agentId becomes known or changes
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      if (!agentId) return;
+      setLoading(true);
+      try {
+        const data = await listConnections(agentId);
+        if (ignore) return;
+        setRows(data);
+        initialRef.current = data;
+        onChange?.(data);
+      } catch (e) {
+        console.error(e);
+        setNotifMessage({ title: "Error", description: "Failed to load connections", variant: "error" });
+        setShowNotif(true);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
+
+  // ---------- UI actions (unchanged visuals, cleaned logic) ----------
+  function openCatalog() {
+    setCatalogOpen(true);
+  }
+
+  function closeCatalog() {
+    setCatalogOpen(false);
+  }
+
+  function addProvider(p: ProviderMeta) {
+    // Create a row immediately for a snappy UI; extId defaults to provider extId
+    const newRow: ConnectionItem = {
+      id: makeTempId(p.id),
+      agentId,
+      providerId: p.id,
+      extId: p.extId,
+      status: "needs_setup",
+      config: null,
+      token: null,
+    };
+    const next = [...rows, newRow];
+    // Persist
+    applyDelta(initialRef.current, next);
+    closeCatalog();
+  }
+
+  function removeRow(rowId: number | string) {
+    const next = rows.filter((r) => r.id !== rowId);
+    applyDelta(initialRef.current, next);
+  }
+
+  async function startAuth(p: ProviderMeta, rowId: number | string) {
+    try {
+      if (!p.startAuth) {
+        // no auth needed
+        return;
+      }
+      const res = await p.startAuth();
+      const token = res?.token ?? null;
+      const next = rows.map((r) => (r.id === rowId ? { ...r, token, status: token ? "connected" : r.status } : r));
+      applyDelta(initialRef.current, next);
+    } catch (e) {
+      console.error(e);
+      setNotifMessage({ title: "Error", description: "Authentication failed", variant: "error" });
+      setShowNotif(true);
+    }
+  }
+
+  function openConfig(p: ProviderMeta, rowId: number | string) {
+    setConfigTarget({ provider: p, id: String(rowId) });
     setConfigOpen(true);
+  }
+
+  function closeConfig() {
+    setConfigOpen(false);
+    setConfigTarget(null);
+    startAuth(configTarget?.provider!, configTarget?.id!);
   }
 
   function saveConfig(values: Record<string, string>) {
     if (!configTarget) return;
-    setItems((prev) => {
-      const next = prev.map((c) =>
-        c.id === configTarget.id ? { ...c, config: values, status: c.status || "needs_setup" } : c
-      );
-      onChange?.(next);
-      return next;
-    });
-    setConfigOpen(false);
-    setConfigTarget(null);
+    const next = rows.map((r) => (String(r.id) === configTarget.id ? { ...r, config: values } : r));
+    // Persist and close
+    applyDelta(initialRef.current, next);
+    closeConfig();
   }
 
-  function removeConnection(id: string) {
-    setItems((prev) => {
-      const next = prev.filter((c) => c.id !== id);
-      onChange?.(next);
-      return next;
-    });
-  }
-
+  // ---------- render (unchanged visuals / structure) ----------
   return (
-    <div className="text-white">
+    <div className="space-y-4">
       {/* Title */}
       <section className="flex flex-col gap-4">
 
@@ -471,47 +666,49 @@ export default function ConnectionsForm({
 
         {/* Banner image */}
         <img
-          src={"/public/assets/agent/banners/step-6.png"}
+          src={"/assets/agent/banners/step-6.png"}
           alt="Give your Future Human a special style"
           className="block w-full rounded-3xl mt-0 mb-5"
           onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
         />
       </section>
 
-      {/* Grid */}
-      <div className="grid grid-cols-3 gap-4">
-        <AddTile onClick={() => setCatalogOpen(true)} />
-        {items.map((c) => {
+      {/* Grid of tiles (structure preserved) */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Add tile */}
+        <AddTile onClick={openCatalog} />
+
+        {/* Existing connections */}
+        {rows.map((c) => {
           const provider = catalogById[c.providerId];
           if (!provider) return null;
           return (
             <ConnectionTile
-              key={c.id}
+              key={String(c.id)}
               provider={provider}
               connection={c}
-              onConfigure={() => openConfig(c)}
-              onRemove={() => removeConnection(c.id)}
+              onRemove={() => removeRow(c.id!)}
+              onConfigure={() => openConfig(provider, c.id!)}
             />
           );
         })}
       </div>
 
-      {/* Modals */}
+      {/* Catalog Modal (unchanged visuals) */}
       <CatalogModal
         open={catalogOpen}
-        onClose={() => setCatalogOpen(false)}
-        onPick={handlePickProvider}
+        onClose={closeCatalog}
+        onPick={(p) => addProvider(p)}
       />
+
+      {/* Config Modal (unchanged visuals) */}
       <ConfigModal
         open={configOpen}
-        onClose={() => {
-          setConfigOpen(false);
-          setConfigTarget(null);
-        }}
-        provider={configTarget?.provider ?? null}
+        onClose={closeConfig}
+        provider={configTarget ? catalogById[configTarget.provider.id] : null}
         values={
           configTarget
-            ? items.find((i) => i.id === configTarget.id)?.config ?? {}
+            ? (rows.find((r) => String(r.id) === configTarget.id)?.config as Record<string, string>) ?? {}
             : {}
         }
         onSave={saveConfig}

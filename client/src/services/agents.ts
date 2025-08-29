@@ -76,27 +76,21 @@ export type AgentUpdate = {
 
 /* --------------------------- Connections sub-API types --------------------------- */
 
-export type AgentConnection = {
-  id: number;
-  agentId: number;
-  extId: string;
+export type ConnectionStatus = "connected" | "needs_setup" | "error";
+
+export type ConnectionItem = {
+  id?: number | string;
+  agentId?: number | string;
   providerId: string;
-  status: "connected" | "needs_setup" | "error";
+  extId: string;
+  status?: ConnectionStatus;
   config?: any | null;
   token?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
-export type ConnectionCreate = {
-  extId: string;
-  providerId: string;
-  status?: "connected" | "needs_setup" | "error";
-  config?: any;
-  token?: string | null;
-};
-
-export type ConnectionUpdate = Partial<ConnectionCreate>;
+export type ConnectionUpdate = Partial<ConnectionItem>;
 
 /* --------------------------------- Utilities --------------------------------- */
 
@@ -146,35 +140,103 @@ export async function deleteAgent(id: number | string): Promise<{ ok: true }> {
 
 /* -------------------------- Connections sub-API -------------------------- */
 
-export async function listConnections(
-  agentId: number | string
-): Promise<{ connections: AgentConnection[] }> {
-  return apiGet(`${base}/${agentId}/connections`);
+export async function listConnections(agentId: number | string): Promise<ConnectionItem[]> {
+  const res = (await apiGet(`/agents/${agentId}/connections`)) as any;
+  return (res?.connections ?? []) as ConnectionItem[];
 }
 
-// Convenience upsert: PATCH if extId exists, otherwise POST
-export async function upsertConnections(
+export async function createConnection(
   agentId: number | string,
-  items:
-    | (ConnectionCreate & { id?: number })
-    | Array<ConnectionCreate & { id?: number }>
-): Promise<{ connections: AgentConnection[] }> {
-  const arr = Array.isArray(items) ? items : [items];
-  const { connections: existing } = await listConnections(agentId);
+  payload: Omit<ConnectionItem, "id" | "agentId" | "createdAt" | "updatedAt">
+): Promise<ConnectionItem> {
+  const res = (await apiPost(`/agents/${agentId}/connections`, payload)) as any;
+  return res.connection as ConnectionItem;
+}
 
-  for (const item of arr) {
-    const withId = (item as any).id as number | undefined;
-    if (withId) {
-      await apiPatch(`${base}/${agentId}/connections/${withId}`, clean(item));
+export async function updateConnection(
+  agentId: number | string,
+  connId: number | string,
+  patch: Partial<Omit<ConnectionItem, "id" | "agentId" | "createdAt" | "updatedAt">>
+): Promise<ConnectionItem> {
+  const res = (await apiPatch(`/agents/${agentId}/connections/${connId}`, patch)) as any;
+  return res.connection as ConnectionItem;
+}
+
+export async function deleteConnection(agentId: number | string, connId: number | string): Promise<void> {
+  await apiDelete(`/agents/${agentId}/connections/${connId}`);
+}
+
+// ---------- Bulk diff helper (create/update/delete in one submit) ----------
+
+function sameVal(a: any, b: any) {
+  if (typeof a === "object" && typeof b === "object") {
+    try { return JSON.stringify(a ?? null) === JSON.stringify(b ?? null); } catch { return a === b; }
+  }
+  return a === b;
+}
+
+function equalConn(a: ConnectionItem, b: ConnectionItem) {
+  return (
+    a.providerId === b.providerId &&
+    a.extId === b.extId &&
+    (a.status ?? "needs_setup") === (b.status ?? "needs_setup") &&
+    sameVal(a.config ?? null, b.config ?? null) &&
+    (a.token ?? null) === (b.token ?? null)
+  );
+}
+
+/**
+ * Compute delta between `before` (loaded from server) and `after` (edited in form),
+ * then perform API calls for created/updated/deleted connections.
+ */
+export async function saveConnectionsDelta(
+  agentId: number | string,
+  before: ConnectionItem[],
+  after: ConnectionItem[]
+): Promise<{ created: ConnectionItem[]; updated: ConnectionItem[]; deleted: (number | string)[] }> {
+  const key = (c: ConnectionItem) => (c.id != null ? `id:${c.id}` : `k:${c.providerId}#${c.extId}`);
+
+  const pre = new Map(before.map((c) => [key(c), c]));
+  const cur = new Map(after.map((c) => [key(c), c]));
+
+  const created: ConnectionItem[] = [];
+  const updated: ConnectionItem[] = [];
+  const deleted: (number | string)[] = [];
+
+  // Create + Update
+  for (const [k, c] of cur) {
+    const prev = pre.get(k);
+    if (!prev) {
+      const made = await createConnection(agentId, {
+        providerId: c.providerId,
+        extId: c.extId,
+        status: c.status ?? "needs_setup",
+        config: c.config ?? null,
+        token: c.token ?? null,
+      });
+      created.push(made);
       continue;
     }
-    const match = existing.find(c => c.extId === item.extId);
-    if (match) {
-      await apiPatch(`${base}/${agentId}/connections/${match.id}`, clean(item));
-    } else {
-      await apiPost(`${base}/${agentId}/connections`, clean(item));
+
+    if (!equalConn(prev, c) && prev.id != null) {
+      const up = await updateConnection(agentId, prev.id, {
+        providerId: c.providerId,
+        extId: c.extId,
+        status: c.status,
+        config: c.config,
+        token: c.token,
+      });
+      updated.push(up);
     }
   }
 
-  return listConnections(agentId);
+  // Delete
+  for (const [k, c] of pre) {
+    if (!cur.has(k) && c.id != null) {
+      await deleteConnection(agentId, c.id);
+      deleted.push(c.id);
+    }
+  }
+
+  return { created, updated, deleted };
 }

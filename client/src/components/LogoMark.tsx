@@ -8,7 +8,7 @@ interface LogoMarkProps {
 
 export default function LogoMark({
 	size = 64,
-	src = "/public/assets/logo.png",
+	src = "/assets/logo.png",
 	accent = "#E7E31B",
 	type = "logo",
 	className
