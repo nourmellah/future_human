@@ -29,8 +29,8 @@ const getAgentThumb = (a: Agent) =>
   a?.thumbnail
     ? a.thumbnail
     : a?.appearance?.personaId
-    ? `/assets/personas/${a.appearance.personaId}.png`
-    : FALLBACK_THUMB;
+      ? `/assets/personas/${a.appearance.personaId}.png`
+      : FALLBACK_THUMB;
 
 export const SidebarAgentCard: React.FC<{
   agent: Agent;
@@ -81,24 +81,33 @@ const SidebarNav: React.FC<SidebarNavProps> = ({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<unknown | null>(null);
 
-  React.useEffect(() => {
-    const ac = new AbortController();
-    (async () => {
+  const refreshAgents = React.useCallback(async () => {
+    try {
       setLoading(true);
       setError(null);
-      try {
-        const res: any = await listAgents();
-        const data = Array.isArray(res) ? res : (res?.agents ?? []);
-        setAgents(data);
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-    return () => ac.abort();
+      const res: any = await listAgents();
+      const data = Array.isArray(res) ? res : (res?.agents ?? []);
+      setAgents(data);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  React.useEffect(() => {
+    const ac = new AbortController();
+    refreshAgents();
+    return () => ac.abort();
+  }, [refreshAgents]);
+
+  React.useEffect(() => {
+    const onChanged = (_e: any) => { refreshAgents(); };
+    window.addEventListener("agents:changed", onChanged as any);
+    return () => window.removeEventListener("agents:changed", onChanged as any);
+  }, [refreshAgents]);
+
+  
   const onAgentClick = (a: Agent) => navigate(`/agents/${a.id}`);
   const data = overrideAgents ?? agents;
 

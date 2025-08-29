@@ -27,23 +27,23 @@ export type BrainFormProps = {
   onRequestUnlock?: (tier: BrainTier) => void;
 };
 const DEFAULT_TIERS: BrainTier[] = [
-	{
-		id: "level1",
-		title: "AGENT\nLEVEL ONE",
-		subtitle: "Instant, accurate single-step answers & lookups",
-	},
-	{
-		id: "level2",
-		title: "AGENT\nLEVEL 2",
-		subtitle: "Smart multi-step reasoning — handles workflows & follow-ups",
-	},
-	{
-		id: "super",
-		title: "SUPER\nBRAIN",
-		subtitle: "Elite long-term planning, creativity & coding — unlock advanced capabilities",
-		locked: true,
-		badge: "crown",
-	},
+  {
+    id: "level1",
+    title: "AGENT\nLEVEL ONE",
+    subtitle: "Instant, accurate single-step answers & lookups",
+  },
+  {
+    id: "level2",
+    title: "AGENT\nLEVEL 2",
+    subtitle: "Smart multi-step reasoning — handles workflows & follow-ups",
+  },
+  {
+    id: "super",
+    title: "SUPER\nBRAIN",
+    subtitle: "Elite long-term planning, creativity & coding — unlock advanced capabilities",
+    locked: true,
+    badge: "crown",
+  },
 ];
 
 function TierCard({
@@ -109,7 +109,7 @@ export default function BrainForm({
     brainId: initial?.brainId || tiers[0]?.id || "level1",
     instructions:
       initial?.instructions ||
-      "Example: A vibrant sales agent at a fast-food joint is quick-witted, energetic, and adept at handling bustling crowds, taking orders, and ensuring customers have an enjoyable dining experience.",
+      ""
   });
 
   function patch(p: Partial<BrainState>) {

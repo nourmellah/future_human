@@ -11,8 +11,15 @@ import BrainForm from "../components/Agent/Forms/BrainForm";
 import BackgroundCardsForm from "../components/Agent/Forms/BackgroundCardsForm";
 import ConnectionsForm from "../components/Agent/Forms/ConnectionsForm";
 
-import { getAgent, createAgent, patchAgent, listConnections, deleteAgent } from "../services/agents";
-import toast from "react-hot-toast";
+import {
+  getAgent,
+  createAgent,
+  patchAgent,
+  listConnections,
+  deleteAgent,
+  saveConnectionsDelta,
+  type ConnectionItem,
+} from "../services/agents";
 import { Zap, IdCard, UserRound, AudioLines, Layers, Brain, List, Eye, Trash2 } from "lucide-react";
 import InlineNotification from "../components/Notification";
 
@@ -48,7 +55,7 @@ type StyleState = {
 };
 type BrainState = { id?: string; instructions?: string | null };
 type CardsState = { backgroundId?: string | null };
-type ConnectionsState = { items: any[] };
+type ConnectionsState = { items: ConnectionItem[] };
 
 function serverToLocal(agent: any) {
   const identity: Identity = {
@@ -111,8 +118,6 @@ function buildPayload(
   cards: { backgroundId?: string | null },
   connections: { items: any[] }
 ) {
-  // Map local state -> backend shape and intentionally omit
-  // empathy/humor/creativity/directness to avoid ER_BAD_FIELD_ERROR.
   const payload: any = {
     identity: {
       name: identity?.name ?? "",
@@ -212,6 +217,7 @@ export default function AgentPage() {
   const [notifMessage, setNotifMessage] = React.useState<{ title: string; description?: string; variant?: "info" | "success" | "error" | "warning" }>({ title: "", description: "", variant: "info" });
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
+  const prevConnectionsRef = React.useRef<ConnectionItem[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -234,9 +240,12 @@ export default function AgentPage() {
           }
           // fetch connections but do not block page
           try {
-            const conn = await listConnections(editId);
-            if (!cancelled && conn) {
-              setConnections({ items: conn });
+            if (editId) {
+              const serverConnections = await listConnections(editId);
+              if (!cancelled) {
+                setConnections({ items: serverConnections });
+                prevConnectionsRef.current = serverConnections; // snapshot for diff
+              }
             }
           } catch {
             /* ignore connections error */
@@ -295,29 +304,79 @@ export default function AgentPage() {
       setConfirmDeleteOpen(false);
     }
   }
-
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = buildPayload(identity as any, appearance as any, voice as any, style as any, brain as any, cards as any, connections as any);
-      console.log("Saving agent", { editId, payload });
+      // Build the agent payload (exclude connections here)
+      const payload = buildPayload(
+        identity as any,
+        appearance as any,
+        voice as any,
+        style as any,
+        brain as any,
+        cards as any,
+        connections as any
+      );
+
+      const agentPayload = {
+        identity: payload.identity,
+        appearance: payload.appearance,
+        voice: payload.voice,
+        style: payload.style,
+        brain: payload.brain,
+        cards: payload.cards,
+        draftId: payload.draftId ?? null,
+      };
+
+      console.log("Agent: ", payload)
+
       if (editId) {
-        await patchAgent(editId, payload as any);
+        // 1) Update the agent core
+        await patchAgent(editId, agentPayload as any);
+
+        // 2) Apply delta for connections against original snapshot
+        await saveConnectionsDelta(editId, prevConnectionsRef.current, connections.items);
+
+        // 3) Snapshot the new current
+        prevConnectionsRef.current = connections.items;
+
         setNotifMessage({ title: "Agent updated.", variant: "success" });
         setShowNotif(true);
       } else {
-        const res = await createAgent(payload as any);
-        const agentId = (res as any)?.agent?.id ?? (res as any)?.id;
+        // CREATE
+        // 1) Create the agent first
+        const res = await createAgent(agentPayload as any);
+        const newId = (res as any)?.agent?.id ?? (res as any)?.id;
+
+        // 2) Save all connections as delta from empty
+        if (newId) {
+          await saveConnectionsDelta(newId, [], connections.items);
+        }
 
         setNotifMessage({ title: "Agent created.", variant: "success" });
         setShowNotif(true);
+
+        // Optional: navigate to the edit page of the new agent
+        // navigate(`/agents/${newId}`);
       }
     } catch (e: any) {
       console.error(e);
-      setNotifMessage({ title: "Save failed", description: e?.message, variant: "error" });
+      setNotifMessage({
+        title: "Failed to save agent.",
+        description: e?.message ?? "Please check your input and try again.",
+        variant: "error",
+      });
       setShowNotif(true);
     } finally {
       setSaving(false);
+      const agentSummary = {
+        id: editId,
+        identity: { name: identity?.name ?? "", role: identity?.role ?? "", desc: identity?.desc ?? null },
+        appearance: { personaId: appearance?.personaId ?? null, bgColor: appearance?.bgColor ?? null },
+        updatedAt: new Date().toISOString(),
+      };
+      window.dispatchEvent(new CustomEvent("agents:changed", { detail: { type: "updated", agent: agentSummary } }));
+
     }
   }
 
@@ -404,7 +463,7 @@ export default function AgentPage() {
                     <PersonaForm
                       value={appearance ?? undefined}
                       onChange={(p: any) =>
-                        setAppearance((prev) => ({ ...prev, personaId: p }))
+                        setAppearance((prev) => ({ ...prev, personaId: p.id, bgColor: p.bgColor }))
                       }
                     />
                     <StepFooter onBack={back} onNext={next} />
@@ -456,7 +515,7 @@ export default function AgentPage() {
                   <>
                     <ConnectionsForm
                       initial={connections.items}
-                      onChange={(items: any[]) => setConnections({ items })}
+                      onChange={(items: ConnectionItem[]) => setConnections({ items })}
                     />
                     <div className="mt-4 flex items-center gap-2">
                       <button

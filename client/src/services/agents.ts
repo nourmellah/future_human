@@ -189,54 +189,50 @@ function equalConn(a: ConnectionItem, b: ConnectionItem) {
  * Compute delta between `before` (loaded from server) and `after` (edited in form),
  * then perform API calls for created/updated/deleted connections.
  */
-export async function saveConnectionsDelta(
-  agentId: number | string,
-  before: ConnectionItem[],
-  after: ConnectionItem[]
-): Promise<{ created: ConnectionItem[]; updated: ConnectionItem[]; deleted: (number | string)[] }> {
-  const key = (c: ConnectionItem) => (c.id != null ? `id:${c.id}` : `k:${c.providerId}#${c.extId}`);
+export const saveConnectionsDelta = async (agentId: string | number, before: ConnectionItem[], after: ConnectionItem[]) => {
+    const key = (c: ConnectionItem) => (c.id != null ? `id:${c.id}` : `k:${c.providerId}#${c.extId}`);
 
-  const pre = new Map(before.map((c) => [key(c), c]));
-  const cur = new Map(after.map((c) => [key(c), c]));
+    const pre = new Map(before.map((c) => [key(c), c]));
+    const cur = new Map(after.map((c) => [key(c), c]));
 
-  const created: ConnectionItem[] = [];
-  const updated: ConnectionItem[] = [];
-  const deleted: (number | string)[] = [];
+    const created: ConnectionItem[] = [];
+    const updated: ConnectionItem[] = [];
+    const deleted: (number | string)[] = [];
 
-  // Create + Update
-  for (const [k, c] of cur) {
-    const prev = pre.get(k);
-    if (!prev) {
-      const made = await createConnection(agentId, {
-        providerId: c.providerId,
-        extId: c.extId,
-        status: c.status ?? "needs_setup",
-        config: c.config ?? null,
-        token: c.token ?? null,
-      });
-      created.push(made);
-      continue;
+    // Create + Update
+    for (const [k, c] of cur) {
+      const prev = pre.get(k);
+      if (!prev) {
+        const made = await createConnection(agentId!, {
+          providerId: c.providerId,
+          extId: c.extId,
+          status: c.status ?? "needs_setup",
+          config: c.config ?? null,
+          token: c.token ?? null,
+        });
+        created.push(made);
+        continue;
+      }
+      if (!equalConn(prev, c) && prev.id != null) {
+        const up = await updateConnection(agentId!, prev.id, {
+          providerId: c.providerId,
+          extId: c.extId,
+          status: c.status,
+          config: c.config,
+          token: c.token,
+        });
+        updated.push(up);
+      }
     }
 
-    if (!equalConn(prev, c) && prev.id != null) {
-      const up = await updateConnection(agentId, prev.id, {
-        providerId: c.providerId,
-        extId: c.extId,
-        status: c.status,
-        config: c.config,
-        token: c.token,
-      });
-      updated.push(up);
+    // Delete
+    for (const [k, c] of pre) {
+      if (!cur.has(k) && c.id != null) {
+        await deleteConnection(agentId!, c.id);
+        deleted.push(c.id);
+      }
     }
-  }
 
-  // Delete
-  for (const [k, c] of pre) {
-    if (!cur.has(k) && c.id != null) {
-      await deleteConnection(agentId, c.id);
-      deleted.push(c.id);
-    }
-  }
+    return { created, updated, deleted };
+  };
 
-  return { created, updated, deleted };
-}

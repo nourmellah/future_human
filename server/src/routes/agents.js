@@ -1,4 +1,3 @@
-// server/src/routes/agents.js
 const express = require('express');
 const { z } = require('zod');
 const db = require('../db');
@@ -38,7 +37,7 @@ const AgentCreateSchema = z.object({
     directness: styleScore,
   }),
   brain: z.object({
-    id: nonEmpty,
+    id: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
   }),
   cards: z.object({
@@ -280,11 +279,19 @@ router.patch('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const [result] = await db.execute(
+
+  // First, delete all connections of the agent
+  await db.execute(
+    'DELETE FROM agent_connections WHERE agent_id = ?',
+    [id]
+  );
+
+  // Then, delete the agent itself
+  const [result2] = await db.execute(
     'DELETE FROM agents WHERE id = ? AND owner_id = ?',
     [id, req.user.id]
   );
-  if (result.affectedRows === 0) return res.status(404).json({ error: 'not_found' });
+  if (result2.affectedRows === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 
@@ -434,4 +441,23 @@ router.delete('/:id/connections/:connId', async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * DELETE /api/agents/:id/connections
+ */
+router.delete('/:id/connections', async (req, res) => {
+  const agentId = Number(req.params.id);
+
+  // Ensure agent belongs to user
+  const [own] = await db.execute('SELECT id FROM agents WHERE id = ? AND owner_id = ? LIMIT 1', [agentId, req.user.id]);
+  if (!own.length) return res.status(404).json({ error: 'agent_not_found' });
+
+  const [result] = await db.execute(
+    'DELETE FROM agent_connections WHERE agent_id = ?',
+    [agentId]
+  );
+  res.json({ ok: true, deleted: result.affectedRows });
+});
+
+
 module.exports = router;
+
