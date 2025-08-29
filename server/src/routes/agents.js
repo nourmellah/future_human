@@ -142,10 +142,26 @@ function payloadToColumns(p) {
 }
 
 function buildUpdateSQL(cols) {
-  const keys = Object.keys(cols);
+  // Map payload-style keys to actual DB column names
+  const alias = {
+    empathy: 'pers_empathy',
+    humor: 'pers_humor',
+    creativity: 'pers_creativity',
+    directness: 'pers_directness',
+  };
+
+  // Apply aliases and dedupe (explicit DB names win if both provided)
+  const mapped = {};
+  for (const [k, v] of Object.entries(cols)) {
+    const col = alias[k] || k;
+    mapped[col] = v;
+  }
+
+  const keys = Object.keys(mapped);
   if (!keys.length) return { sql: '', values: [] };
+
   const sets = keys.map(k => `${k} = ?`).join(', ');
-  const values = keys.map(k => cols[k]);
+  const values = keys.map(k => mapped[k]);
   return { sql: sets, values };
 }
 

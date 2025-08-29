@@ -17,7 +17,6 @@ export type AgentAppearance = {
 export type AgentVoice = {
   language: string;
   name: string;
-  // optional passthrough (server may ignore if unused)
   style?: string | null;
 };
 

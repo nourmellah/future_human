@@ -4,26 +4,14 @@ import type { IconSelectOption } from "../../Form/IconSelect";
 import DualBalanceSlider from "../../Form/DualBalanceSlider";
 import IconSelect from "../../Form/IconSelect";
 import ReactCountryFlag from "react-country-flag";
+import type { AgentStyle, AgentVoice } from "../../../services/agents";
 
 const ACCENT = "#E7E31B";
 
 export type VoiceSoulState = {
-  language: string;
-  voice: string;
-
-  // Primary (always visible)
-  styleFormality: number; // Formal ↔ Relaxed
-  stylePace: number;      // Fast ↔ Long Reply
-
-  // Advanced (behind toggle)
-  tempCalm: number;         // Calm ↔ Impulsive
-  tempIntrovert: number;    // Introvert ↔ Extrovert
-  persEmpathy: number;          // Literal ↔ Empathetic
-  persHumor: number;            // Serious ↔ Playful
-  persCreativity: number;       // Factual ↔ Imaginative
-  persDirectness: number;       // Indirect ↔ Direct
+  voice: AgentVoice;
+  style: AgentStyle;
 };
-
 
 export type VoiceSoulFormProps = {
   bannerSrc?: string;
@@ -45,6 +33,12 @@ const DEFAULT_VOICES: IconSelectOption[] = [
   { value: "mike", label: "Mike", icon: <Play className="w-4 h-4" /> },
 ];
 
+const toInt010 = (v: any, fallback = 5) => {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  const r = Math.round(n);
+  return Math.max(0, Math.min(10, r));
+};
+
 export default function VoiceSoulForm({
   bannerSrc = "/assets/create/voice-banner.png",
   languageOptions = DEFAULT_LANGS,
@@ -54,18 +48,21 @@ export default function VoiceSoulForm({
 }: VoiceSoulFormProps) {
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
   const [state, setState] = useState<VoiceSoulState>({
-    language: initial?.language || "en",
-    voice: initial?.voice || "alex",
-    styleFormality: initial?.styleFormality ?? 5,
-    stylePace: initial?.stylePace ?? 5,
-    tempCalm: initial?.tempCalm ?? 5,
-    tempIntrovert: initial?.tempIntrovert ?? 5,
-    persEmpathy: initial?.persEmpathy ?? 5,
-    persHumor: initial?.persHumor ?? 5,
-    persCreativity: initial?.persCreativity ?? 5,
-    persDirectness: initial?.persDirectness ?? 5,
-  });
+    voice: {
+      language: initial?.voice?.language || "en-US",
+      name:     initial?.voice?.name    || "alloy",
+    },
 
+    style: {
+      formality:  toInt010(initial?.style?.formality),
+      pace:       toInt010(initial?.style?.pace),
+      calm:       toInt010(initial?.style?.calm),
+      introvert:  toInt010(initial?.style?.introvert),
+      empathy:    toInt010(initial?.style?.empathy ?? 5),
+      humor:      toInt010(initial?.style?.humor ?? 5),
+      creativity: toInt010(initial?.style?.creativity ?? 5),
+      directness: toInt010(initial?.style?.directness ?? 5),
+    }});
 
   function patch(p: Partial<VoiceSoulState>) {
     setState((s) => {
@@ -77,14 +74,14 @@ export default function VoiceSoulForm({
 
   const derived = useMemo(
     () => ({
-      styleRelaxed: 10 - state.styleFormality,
-      styleLongReply: 10 - state.stylePace,
-      tempImpulsive: 10 - state.tempCalm,
-      tempExtrovert: 10 - state.tempIntrovert,
-      persLiteral: 10 - state.persEmpathy,
-      persSerious: 10 - state.persHumor,
-      persFactual: 10 - state.persCreativity,
-      persIndirectedness: 10 - state.persDirectness,
+      styleRelaxed: 10 - state.style.formality,
+      styleLongReply: 10 - state.style.pace,
+      tempImpulsive: 10 - state.style.calm,
+      tempExtrovert: 10 - state.style.introvert,
+      persLiteral: 10 - state.style.empathy,
+      persSerious: 10 - state.style.humor,
+      persFactual: 10 - state.style.creativity,
+      persIndirectedness: 10 - state.style.directness,
     }),
     [state]
   );
@@ -120,8 +117,8 @@ export default function VoiceSoulForm({
       {/* Language */}
       <IconSelect
         label="Native Language"
-        value={state.language}
-        onChange={(v) => patch({ language: v })}
+        value={state.voice.language}
+        onChange={(v) => patch({ voice: { ...state.voice, language: v } })}
         options={languageOptions}
         placeholder="Select language"
         className="mb-4"
@@ -130,8 +127,8 @@ export default function VoiceSoulForm({
       {/* Voice */}
       <IconSelect
         label="Select Voice"
-        value={state.voice}
-        onChange={(v) => patch({ voice: v })}
+        value={state.voice.name}
+        onChange={(v) => patch({ voice: { ...state.voice, name: v } })}
         options={voiceOptions}
         placeholder="Choose a voice"
         className="mb-6"
@@ -144,15 +141,15 @@ export default function VoiceSoulForm({
         <DualBalanceSlider
           leftLabel="Formal"
           rightLabel="Relaxed"
-          value={state.styleFormality}
-          onChange={(left) => patch({ styleFormality: left })}
+          value={state.style.formality}
+          onChange={(left) => patch({ style: { ...state.style, formality: left } })}
           className="mb-4"
         />
         <DualBalanceSlider
           leftLabel="Fast"
           rightLabel="Long Reply"
-          value={state.stylePace}
-          onChange={(left) => patch({ stylePace: left })}
+          value={state.style.pace}
+          onChange={(left) => patch({ style: { ...state.style, pace: left } })}
         />
       </div>
 
@@ -183,15 +180,15 @@ export default function VoiceSoulForm({
             <DualBalanceSlider
               leftLabel="Calm"
               rightLabel="Impulsive"
-              value={state.tempCalm}
-              onChange={(left) => patch({ tempCalm: left })}
+              value={state.style.calm}
+              onChange={(left) => patch({ style: { ...state.style, calm: left } })}
               className="mb-4"
             />
             <DualBalanceSlider
               leftLabel="Introvert"
               rightLabel="Extrovert"
-              value={state.tempIntrovert}
-              onChange={(left) => patch({ tempIntrovert: left })}
+              value={state.style.introvert}
+              onChange={(left) => patch({ style: { ...state.style, introvert: left } })}
             />
           </div>
 
@@ -200,29 +197,29 @@ export default function VoiceSoulForm({
             <DualBalanceSlider
               leftLabel="Literal"
               rightLabel="Empathetic"
-              value={state.persEmpathy}
-              onChange={(left) => patch({ persEmpathy: left })}
+              value={state.style.empathy}
+              onChange={(left) => patch({ style: { ...state.style, empathy: left } })}
               className="mb-4"
             />
             <DualBalanceSlider
               leftLabel="Serious"
               rightLabel="Playful"
-              value={state.persHumor}
-              onChange={(left) => patch({ persHumor: left })}
+              value={state.style.humor}
+              onChange={(left) => patch({ style: { ...state.style, humor: left } })}
               className="mb-4"
             />
             <DualBalanceSlider
               leftLabel="Factual"
               rightLabel="Imaginative"
-              value={state.persCreativity}
-              onChange={(left) => patch({ persCreativity: left })}
+              value={state.style.creativity}
+              onChange={(left) => patch({ style: { ...state.style, creativity: left } })}
               className="mb-4"
             />
             <DualBalanceSlider
               leftLabel="Indirect"
               rightLabel="Direct"
-              value={state.persDirectness}
-              onChange={(left) => patch({ persDirectness: left })}
+              value={state.style.directness}
+              onChange={(left) => patch({ style: { ...state.style, directness: left } })}
             />
           </div>
         </div>

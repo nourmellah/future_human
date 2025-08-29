@@ -14,6 +14,7 @@ import ConnectionsForm from "../components/Agent/Forms/ConnectionsForm";
 import { getAgent, createAgent, patchAgent, listConnections, upsertConnections, deleteAgent } from "../services/agents";
 import toast from "react-hot-toast";
 import { Zap, IdCard, UserRound, AudioLines, Layers, Brain, List, Eye, Trash2 } from "lucide-react";
+import { Notification, useNotify } from "../components/Notification";
 
 const ACCENT = "#E7E31B";
 const DONE = "#22c55e";
@@ -30,11 +31,20 @@ const STEPS: { key: StepKey; label: string; Icon: any }[] = [
 
 type Identity = { name?: string; role?: string; companyName?: string; desc?: string | null };
 type Appearance = { personaId?: string | null; bgColor?: string | null };
-type VoiceSoul = {
-  language?: string; voice?: string;
-  styleFormality?: number; stylePace?: number;
-  tempCalm?: number; tempIntrovert?: number;
-  empathy?: number; humor?: number; creativity?: number; directness?: number;
+type VoiceState = {
+  language: string;
+  name: string;
+  style?: string | null;
+};
+type StyleState = {
+  formality: number;   // int 0..10
+  pace: number;        // int 0..10
+  calm: number;        // int 0..10
+  introvert: number;   // int 0..10
+  empathy: number;     // int 0..10
+  humor: number;       // int 0..10
+  creativity: number;  // int 0..10
+  directness: number;  // int 0..10
 };
 type BrainState = { id?: string; instructions?: string | null };
 type CardsState = { backgroundId?: string | null };
@@ -51,13 +61,17 @@ function serverToLocal(agent: any) {
     personaId: agent?.appearance?.personaId ?? null,
     bgColor: agent?.appearance?.bgColor ?? null,
   };
-  const voiceSoul: VoiceSoul = {
+  const voice: VoiceState = {
     language: agent?.voice?.language ?? "en",
-    voice: agent?.voice?.name ?? "alex",
-    styleFormality: agent?.style?.formality ?? 5,
-    stylePace: agent?.style?.pace ?? 5,
-    tempCalm: agent?.style?.calm ?? 5,
-    tempIntrovert: agent?.style?.introvert ?? 5,
+    name: agent?.voice?.name ?? "alex",
+    style: agent?.voice?.style ?? null,
+  };
+
+  const style: StyleState = {
+    formality: agent?.style?.formality ?? 5,
+    pace: agent?.style?.pace ?? 5,
+    calm: agent?.style?.calm ?? 5,
+    introvert: agent?.style?.introvert ?? 5,
     empathy: agent?.style?.empathy ?? 5,
     humor: agent?.style?.humor ?? 5,
     creativity: agent?.style?.creativity ?? 5,
@@ -73,7 +87,7 @@ function serverToLocal(agent: any) {
   const connections: ConnectionsState = {
     items: [],
   };
-  return { identity, appearance, voiceSoul, brain, cards, connections };
+  return { identity, appearance, voice, style, brain, cards, connections };
 }
 
 // Ensure integer style scores 0..10
@@ -83,14 +97,15 @@ function toInt010(v?: number, fallback = 5) {
 }
 
 function buildPayload(
-  identity: { name?: string; role?: string; desc?: string | null; description?: string | null },
+  identity: { name?: string; role?: string; desc?: string | null; companyName?: string | null },
   appearance: { personaId?: string | null; bgColor?: string | null },
-  voiceSoul: {
+  voice: {
     language?: string; voice?: string;
-    styleFormality?: number; stylePace?: number;
-    tempCalm?: number; tempIntrovert?: number;
-    // We intentionally ignore the four personality sliders below:
-    // empathy?: number; humor?: number; creativity?: number; directness?: number;
+    name?: number; stylePace?: number;
+  },
+  style: {
+    formality?: number; pace?: number; calm?: number; introvert?: number;
+    empathy?: number; humor?: number; creativity?: number; directness?: number;
   },
   brain: { id?: string; instructions?: string | null },
   cards: { backgroundId?: string | null },
@@ -109,18 +124,18 @@ function buildPayload(
       bgColor: appearance?.bgColor ?? null,
     },
     voice: {
-      language: voiceSoul?.language ?? "en",
-      name: voiceSoul?.voice ?? "alex",
+      language: voice?.language ?? "en",
+      name: voice?.name ?? "alex",
     },
     style: {
-      formality: toInt010(voiceSoul?.styleFormality),
-      pace: toInt010(voiceSoul?.stylePace),
-      calm: toInt010(voiceSoul?.tempCalm),
-      introvert: toInt010(voiceSoul?.tempIntrovert),
-      empathy: toInt010((voiceSoul as any)?.empathy ?? 5),
-      humor: toInt010((voiceSoul as any)?.humor ?? 5),
-      creativity: toInt010((voiceSoul as any)?.creativity ?? 5),
-      directness: toInt010((voiceSoul as any)?.directness ?? 5),
+      formality: toInt010(style?.formality),
+      pace: toInt010(style?.pace),
+      calm: toInt010(style?.calm),
+      introvert: toInt010(style?.introvert),
+      empathy: toInt010(style?.empathy ?? 5),
+      humor: toInt010(style?.humor ?? 5),
+      creativity: toInt010(style?.creativity ?? 5),
+      directness: toInt010(style?.directness ?? 5),
     },
     brain: {
       id: brain?.id ?? "",
@@ -167,18 +182,21 @@ function StepFooter({ onBack, onNext, nextLabel = "Save & Next" }: { onBack: () 
 export default function AgentPage() {
   const editId = useEditId();
   const navigate = useNavigate();
+  const notify = useNotify();
 
   const [current, setCurrent] = React.useState<StepKey>("identity");
 
   const [identity, setIdentity] = React.useState<Identity>({ name: "", role: "", desc: "" });
   const [appearance, setAppearance] = React.useState<Appearance>({ personaId: null, bgColor: null });
-  const [voiceSoul, setVoiceSoul] = React.useState<VoiceSoul>({
+  const [voice, setVoice] = React.useState<VoiceState>({
     language: "en",
-    voice: "alex",
-    styleFormality: 5,
-    stylePace: 5,
-    tempCalm: 5,
-    tempIntrovert: 5,
+    name: "alex",
+  });
+  const [style, setStyle] = React.useState<StyleState>({
+    formality: 5,
+    pace: 5,
+    calm: 5,
+    introvert: 5,
     empathy: 5,
     humor: 5,
     creativity: 5,
@@ -207,7 +225,8 @@ export default function AgentPage() {
             if (!cancelled) {
               setIdentity(mapped.identity);
               setAppearance(mapped.appearance);
-              setVoiceSoul(mapped.voiceSoul);
+              setVoice(mapped.voice);
+              setStyle(mapped.style);
               setBrain(mapped.brain);
               setCards(mapped.cards);
             }
@@ -225,13 +244,15 @@ export default function AgentPage() {
           // CREATE mode — start clean
           setIdentity({ name: "", role: "", desc: "" });
           setAppearance({ personaId: null, bgColor: null });
-          setVoiceSoul({
+          setVoice({
             language: "en",
-            voice: "alex",
-            styleFormality: 5,
-            stylePace: 5,
-            tempCalm: 5,
-            tempIntrovert: 5,
+            name: "alex",
+          });
+          setStyle({
+            formality: 5,
+            pace: 5,
+            calm: 5,
+            introvert: 5,
             empathy: 5,
             humor: 5,
             creativity: 5,
@@ -261,11 +282,11 @@ export default function AgentPage() {
     try {
       setDeleting(true);
       await deleteAgent(editId);
-      toast.success("Agent deleted.");
+      notify({ title: "Agent deleted.", variant: "success" });
       navigate("/agents");
     } catch (e: any) {
       console.error(e);
-      toast.error(e?.message || "Delete failed");
+      notify({ title: "Delete failed", description: e?.message, variant: "error" });
     } finally {
       setDeleting(false);
       setConfirmDeleteOpen(false);
@@ -275,7 +296,8 @@ export default function AgentPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = buildPayload(identity as any, appearance as any, voiceSoul as any, brain as any, cards as any, connections as any);
+      const payload = buildPayload(identity as any, appearance as any, voice as any, style as any, brain as any, cards as any, connections as any);
+      console.log("Saving agent", { editId, payload });
       if (editId) {
         await patchAgent(editId, payload as any);
         toast.success("Agent updated.");
@@ -285,12 +307,11 @@ export default function AgentPage() {
         if (agentId != null && connections.items?.length) {
           await upsertConnections(agentId, connections.items);
         }
-        toast.success("Agent created.");
-        if (agentId != null) navigate(`/agents/${agentId}`);
+        notify({ title: "Agent created.", variant: "success" });
       }
     } catch (e: any) {
       console.error(e);
-      toast.error(e?.message || "Save failed");
+      notify({ title: "Save failed", description: e?.message, variant: "error" });
     } finally {
       setSaving(false);
     }
@@ -389,10 +410,11 @@ export default function AgentPage() {
                 {active === "voiceSoul" && (
                   <>
                     <VoiceSoulForm
-                      initial={voiceSoul as any}
-                      onChange={(d: any) =>
-                        setVoiceSoul((prev) => ({ ...prev, ...d }))
-                      }
+                      initial={{voice, style} as any}
+                      onChange={(d: any) => {
+                        setVoice((prev) => ({ ...prev, ...d.voice }));
+                        setStyle((prev) => ({ ...prev, ...d.style }));
+                      }}
                     />
                     <StepFooter onBack={back} onNext={next} />
                   </>
